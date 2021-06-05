@@ -1,0 +1,2 @@
+type Kind i32;
+
