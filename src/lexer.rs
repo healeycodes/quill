@@ -349,27 +349,57 @@ pub fn tokenize(source: &Vec<&str>, fatal_error: bool, debug_lexer: bool) -> Vec
     let mut tokens = Vec::new();
 
     let mut buf = String::new();
-    let strbuf = String::new();
-    let strbuf_start_line = 0;
-    let strbuf_start_col = 0;
+    let mut strbuf = String::new();
+    let mut strbuf_start_line = 0;
+    let mut strbuf_start_col = 0;
 
     let last_kind = &mut Token::Separator;
 
     let mut line_no = 1;
     let mut col_no = 1;
 
-    let in_string_literal = false;
+    let mut in_string_literal = false;
 
     let mut source_pos = 0;
-    if source.len() > 2 && source[0..1] == ["#!"] {
+    if source.len() > 2 && source[..2] == ["#", "!"] {
         // shebang-style ignored line, keep taking until EOL
         while source[source_pos] != "\n" {
             source_pos += 1;
         }
         line_no += 1;
-        println!("hit");
     }
-    println!("ln: {}", line_no);
+    while source_pos < source.len() {
+        let character = source[source_pos];
+        match character {
+            "\\" => {
+                if in_string_literal {
+                    commit(
+                        Tok {
+                            str: strbuf,
+                            num: 0.0,
+                            kind: Token::StringLiteral,
+                            position: Position {
+                                line: strbuf_start_line,
+                                col: strbuf_start_col,
+                            },
+                        },
+                        &mut buf,
+                        last_kind,
+                        &mut tokens,
+                        debug_lexer,
+                        fatal_error,
+                        line_no,
+                        col_no,
+                    )
+                } else {
+                    strbuf = String::from("");
+                    strbuf_start_line = line_no;
+                    strbuf_start_col = col_no;
+                }
+                in_string_literal = !in_string_literal;
+            }
+        }
+    }
 
     return tokens;
 }
