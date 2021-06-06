@@ -1,9 +1,9 @@
 #![allow(dead_code)]
-mod parser;
 mod error;
-mod lexer;
 mod eval;
+mod lexer;
 mod log;
+mod parser;
 
 use std::env;
 use std::fs;
@@ -19,7 +19,9 @@ fn main() {
     let file_utf8 = str::from_utf8(&file_bytes).unwrap();
     let file_unicode = UnicodeSegmentation::graphemes(file_utf8, true).collect::<Vec<&str>>();
 
-    let tokens = lexer::tokenize(&file_unicode, true, true);
+    let tokens: &mut Vec<lexer::Tok> = &mut Vec::new();
+    lexer::tokenize(tokens, &file_unicode, true, true);
 
+    parser::parse(tokens, true, true);
     // println!("{:#?}", tokens);
 }

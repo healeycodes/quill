@@ -68,14 +68,13 @@ pub enum Token {
 
 // impl Copy for Token {
 //     fn copy(&self) -> Token {
-        
 //     }
 // }
 
 #[derive(Debug)]
 pub struct Position {
-    line: i32,
-    col: i32,
+    pub line: i32,
+    pub col: i32,
 }
 
 impl Position {
@@ -98,7 +97,7 @@ pub struct Tok {
 }
 
 impl Tok {
-    fn string(&self) -> String {
+    pub fn string(&self) -> String {
         match self.kind {
             Token::Identifier | Token::StringLiteral => {
                 format!(
@@ -120,7 +119,7 @@ impl Tok {
 }
 
 struct LexerState<'a> {
-    tokens: Vec<Token>,
+    tokens: &'a mut Vec<Tok>,
     buf: &'a mut String,
     last_kind: &'a mut Token,
     line_no: i32,
@@ -133,8 +132,8 @@ fn simple_commit(tok: Tok, lexer_state: &mut LexerState) {
     if lexer_state.debug_lexer {
         log::log_debug("lex ->".to_string(), tok.string())
     }
-    lexer_state.tokens.push(tok.kind.clone());
-    *lexer_state.last_kind = tok.kind;
+    *lexer_state.last_kind = tok.kind.clone();
+    lexer_state.tokens.push(tok);
 }
 
 fn simple_commit_char(kind: &Kind, lexer_state: &mut LexerState) {
@@ -267,9 +266,9 @@ fn match_new_line(s: &str) -> bool {
     return s == "\n" || s == "\r" || s == "\r\n";
 }
 
-pub fn tokenize(source: &Vec<&str>, fatal_error: bool, debug_lexer: bool) -> Vec<Token> {
+pub fn tokenize(tokens: &mut Vec<Tok>, source: &Vec<&str>, fatal_error: bool, debug_lexer: bool) {
     let lexer_state = &mut LexerState {
-        tokens: Vec::new(),
+        tokens: &mut Vec::new(),
         buf: &mut String::new(),
         last_kind: &mut Token::Separator,
         line_no: 1,
@@ -486,8 +485,6 @@ pub fn tokenize(source: &Vec<&str>, fatal_error: bool, debug_lexer: bool) -> Vec
         source_pos += 1
     }
     ensure_separator(lexer_state);
-
-    return lexer_state.tokens.clone();
 }
 
 impl Kind {
