@@ -4,7 +4,7 @@ use crate::log;
 
 // GoInk: Kind is the sum type of all possible types
 // of tokens in an Ink program
-type Kind = Token;
+pub type Kind = Token;
 
 #[derive(Debug, Copy)]
 pub enum Token {
@@ -73,7 +73,7 @@ impl Clone for Token {
 }
 
 #[derive(Debug)]
-struct Position {
+pub struct Position {
     line: i32,
     col: i32,
 }

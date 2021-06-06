@@ -1,7 +1,8 @@
 #![allow(dead_code)]
+mod parser;
 mod error;
-mod eval;
 mod lexer;
+mod eval;
 mod log;
 
 use std::env;
