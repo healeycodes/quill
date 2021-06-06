@@ -17,5 +17,8 @@ fn main() {
     let file_bytes = fs::read(filename).expect(&format!("Couldn't read {}", &args[1]));
     let file_utf8 = str::from_utf8(&file_bytes).unwrap();
     let file_unicode = UnicodeSegmentation::graphemes(file_utf8, true).collect::<Vec<&str>>();
-    lexer::tokenize(&file_unicode, true, true);
+
+    let tokens = lexer::tokenize(&file_unicode, true, true);
+
+    // println!("{:#?}", tokens);
 }

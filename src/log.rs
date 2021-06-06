@@ -10,7 +10,7 @@ const ANSI_GREEN_BOLD: &str = "[32;1m";
 const ANSI_RED_BOLD: &str = "[31;1m";
 
 pub fn log_debug(s1: String, s2: String) {
-    print!("{} {}", s1, s2)
+    println!("{} {}", s1, s2)
 }
 
 // func LogDebugf(s string, args ...interface{}) {
@@ -27,7 +27,7 @@ pub fn log_debug(s1: String, s2: String) {
 
 // LogSafeErr is like LogErr, but does not immediately exit the interpreter
 pub fn log_safe_err(reason: i32, message: &str) {
-    let mut err_str = match reason {
+    let err_str = match reason {
         error::ERR_SYNTAX => String::from("syntax error"),
         error::ERR_RUNTIME => String::from("runtime error"),
         error::ERR_SYSTEM => String::from("system error"),
