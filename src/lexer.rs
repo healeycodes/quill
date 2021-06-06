@@ -2,7 +2,7 @@ use crate::error;
 use crate::eval;
 use crate::log;
 
-// Kind is the sum type of all possible types
+// GoInk: Kind is the sum type of all possible types
 // of tokens in an Ink program
 type Kind = Token;
 
@@ -84,12 +84,12 @@ impl Position {
     }
 }
 
-// Tok is the monomorphic struct representing all Ink program tokens
+// GoInk: Tok is the monomorphic struct representing all Ink program tokens
 // in the lexer.
 #[derive(Debug)]
 struct Tok {
     kind: Kind,
-    // str and num are both present to implement Tok
+    // GoInk: str and num are both present to implement Tok
     // as a monomorphic type for all tokens; will be zero
     // values often.
     str: String,
@@ -154,7 +154,7 @@ fn simple_commit_char(kind: &Kind, lexer_state: &mut LexerState) {
 
 fn commit_clear(lexer_state: &mut LexerState) {
     if lexer_state.buf == "" {
-        // no need to commit empty token
+        // GoInk: no need to commit empty token
         return;
     }
 
@@ -257,7 +257,7 @@ fn ensure_separator(lexer_state: &mut LexerState) {
         | Token::FunctionArrow
         | Token::MatchColon
         | Token::CaseArrow =>
-            // do nothing
+            // GoInk: do nothing
             {}
         _ => commit_char(Token::Separator, lexer_state),
     }
@@ -285,7 +285,7 @@ pub fn tokenize(source: &Vec<&str>, fatal_error: bool, debug_lexer: bool) -> Vec
 
     let mut source_pos = 0;
     if source.len() > 2 && source[..2] == ["#", "!"] {
-        // shebang-style ignored line, keep taking until EOL
+        // GoInk: shebang-style ignored line, keep taking until EOL
         while source_pos < source.len() {
             source_pos += 1;
             if match_new_line(source[source_pos]) {
@@ -322,7 +322,7 @@ pub fn tokenize(source: &Vec<&str>, fatal_error: bool, debug_lexer: bool) -> Vec
                 lexer_state.col_no = 0;
                 strbuf.push_str(character);
             } else if character == "\\" {
-                // backslash escapes like in most other languages,
+                // GoInk: backslash escapes like in most other languages,
                 // so just consume whatever the next char is into
                 // the current string buffer
                 source_pos += 1;
@@ -342,7 +342,7 @@ pub fn tokenize(source: &Vec<&str>, fatal_error: bool, debug_lexer: bool) -> Vec
             let mut next_char = source[source_pos];
 
             if next_char == "`" {
-                // single-line comment, keep taking until EOL
+                // GoInk: single-line comment, keep taking until EOL
                 while source_pos < source.len() && match_new_line(next_char) != true {
                     source_pos += 1;
                     next_char = source[source_pos];
@@ -352,7 +352,7 @@ pub fn tokenize(source: &Vec<&str>, fatal_error: bool, debug_lexer: bool) -> Vec
                 lexer_state.line_no += 1;
                 lexer_state.col_no = 0;
             } else {
-                // multi-line block comment, keep taking until end of block
+                // GoInk: multi-line block comment, keep taking until end of block
                 while source_pos < source.len() && next_char != "`" {
                     source_pos += 1;
                     next_char = source[source_pos];
@@ -368,8 +368,7 @@ pub fn tokenize(source: &Vec<&str>, fatal_error: bool, debug_lexer: bool) -> Vec
             ensure_separator(lexer_state);
             lexer_state.line_no += 1;
             lexer_state.col_no = 0;
-        // Go's unicode.IsSpace
-        // TODO: unimplemented check for \f, 0x85 (NEL), and 0xA0 (NBSP)
+        // unicode.IsSpace TODO: unimplemented check for \f, 0x85 (NEL), and 0xA0 (NBSP)
         } else if character == " " || character == "\t" || character == "\n" || character == "\r" {
             commit_clear(lexer_state);
         } else if character == "_" {
@@ -397,7 +396,7 @@ pub fn tokenize(source: &Vec<&str>, fatal_error: bool, debug_lexer: bool) -> Vec
         } else if character == "," {
             commit_char(Token::Separator, lexer_state)
         } else if character == "." {
-            // only non-AccessorOp case is [Number token] . [Number],
+            // GoInk: only non-AccessorOp case is [Number token] . [Number],
             // so we commit and bail early if the buf is empty or contains
             // a clearly non-numeric token. Note that this means all numbers
             // must start with a digit. i.e. .5 is not 0.5 but a syntax error.
@@ -432,7 +431,7 @@ pub fn tokenize(source: &Vec<&str>, fatal_error: bool, debug_lexer: bool) -> Vec
             } else if next_char == ":" {
                 commit_char(Token::MatchColon, lexer_state)
             } else {
-                // key is parsed as expression, so make sure
+                // GoInk: key is parsed as expression, so make sure
                 // we mark expression end (Separator)
                 ensure_separator(lexer_state);
                 commit_char(Token::KeyValueSeparator, lexer_state);

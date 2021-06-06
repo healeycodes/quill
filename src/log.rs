@@ -1,6 +1,6 @@
 use crate::error;
 
-// ANSI terminal escape codes for color output
+// GoInk: ANSI terminal escape codes for color output
 const ANSI_RESET: &str = "[0;0m";
 const ANSI_BLUE: &str = "[34;22m";
 const ANSI_GREEN: &str = "[32;22m";
@@ -25,7 +25,7 @@ pub fn log_debug(s1: String, s2: String) {
 // 	LogInteractive(fmt.Sprintf(s, args...))
 // }
 
-// LogSafeErr is like LogErr, but does not immediately exit the interpreter
+// GoInk: LogSafeErr is like LogErr, but does not immediately exit the interpreter
 pub fn log_safe_err(reason: i32, message: &str) {
     let err_str = match reason {
         error::ERR_SYNTAX => String::from("syntax error"),
