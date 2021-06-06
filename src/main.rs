@@ -11,8 +11,6 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let filename = &args[1];
 
-    let contents = fs::read_to_string(filename).expect("Something went wrong reading the file");
-    for c in contents.chars() {
-        println!(">{}<", c);
-    }
+    let contents = fs::read(filename).expect("Something went wrong reading the file");
+    lexer::tokenize(&contents, true, true);
 }
