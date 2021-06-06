@@ -1,7 +1,6 @@
 use crate::error;
 use crate::eval;
 use crate::log;
-use unicode_segmentation::UnicodeSegmentation;
 
 // Kind is the sum type of all possible types
 // of tokens in an Ink program
@@ -346,7 +345,7 @@ fn ensure_separator(
     }
 }
 
-pub fn tokenize(source: &String, fatal_error: bool, debug_lexer: bool) -> Vec<Token> {
+pub fn tokenize(source: &Vec<&str>, fatal_error: bool, debug_lexer: bool) -> Vec<Token> {
     let mut tokens = Vec::new();
 
     let mut buf = String::new();
@@ -361,12 +360,11 @@ pub fn tokenize(source: &String, fatal_error: bool, debug_lexer: bool) -> Vec<To
 
     let in_string_literal = false;
 
-    let buffered = String::from_utf8_lossy(unbuffered)
-    let mut buffered_pos = 0;
-    if buffered.len() > 1 && buffered[0..1] == "#!" {
+    let mut source_pos = 0;
+    if source.len() > 2 && source[0..1] == ["#!"] {
         // shebang-style ignored line, keep taking until EOL
-        while buffered[buffered_pos] != "\n" {
-            buffered_pos += 1;
+        while source[source_pos] != "\n" {
+            source_pos += 1;
         }
         line_no += 1;
         println!("hit");

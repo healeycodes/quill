@@ -1,16 +1,21 @@
 #![allow(dead_code)]
-mod log;
-mod eval;
 mod error;
+mod eval;
 mod lexer;
+mod log;
 
 use std::env;
 use std::fs;
+use std::str;
+
+use unicode_segmentation::UnicodeSegmentation;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
     let filename = &args[1];
 
-    let contents = fs::read(filename).expect("Something went wrong reading the file");
-    lexer::tokenize(&contents, true, true);
+    let file_bytes = fs::read(filename).expect(&format!("Couldn't read {}", &args[1]));
+    let file_utf8 = str::from_utf8(&file_bytes).unwrap();
+    let file_unicode = UnicodeSegmentation::graphemes(file_utf8, true).collect::<Vec<&str>>();
+    lexer::tokenize(&file_unicode, true, true);
 }
