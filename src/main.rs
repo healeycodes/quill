@@ -21,7 +21,6 @@ fn main() {
 
     let tokens: &mut Vec<lexer::Tok> = &mut Vec::new();
     lexer::tokenize(tokens, &file_unicode, true, true);
-
-    parser::parse(tokens, true, true);
-    // println!("{:#?}", tokens);
+    let ast_nodes = parser::parse(tokens, true, true);
+    println!("{:#?}", ast_nodes);
 }

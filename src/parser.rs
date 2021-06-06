@@ -1,6 +1,7 @@
 use crate::error;
 use crate::lexer;
 
+#[derive(Debug)]
 pub enum Node {
     UnaryExprNode {
         operator: lexer::Kind,
@@ -108,14 +109,27 @@ pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) ->
         let expr = parsed_expression.0;
         let incr = parsed_expression.1;
         let err = parsed_expression.2;
-
         idx += 1;
+
+        match err {
+            error::Err => {
+                if fatal_error {
+                    log::log_err(err.reason, err.message)
+                } else {
+                    log::log_safe_err(err.reason, err.message)
+                }
+            }
+            _ => log::log_err_f(
+                error::ERR_ASSERT,
+                format!("err raised that was not of Err type -> {}", err),
+            ),
+        }
     }
 
     return nodes;
 }
 
-fn parse_expression(tokens: &[lexer::Tok]) -> (Box<Node>, i32, error::Err) {
+fn parse_expression(tokens: &[lexer::Tok]) -> (Box<Node>, i32, Result<(), error::Err>) {
     let null_node = Box::new(Node::UnaryExprNode {
         operator: lexer::Kind::AccessorOp,
         operand: Box::new(Node::EmptyIdentifierNode {
@@ -123,12 +137,13 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Box<Node>, i32, error::Err) {
         }),
         position: lexer::Position { line: 1, col: 1 },
     });
-    return (
-        null_node,
-        0,
-        error::Err {
-            message: String::new(),
-            reason: -1,
-        },
-    );
+    return (null_node, 0, Ok(()));
+    // return (
+    //     null_node,
+    //     0,
+    //     Err(error::Err {
+    //         message: String::new(),
+    //         reason: -1,
+    //     }),
+    // );
 }
