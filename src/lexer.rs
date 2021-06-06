@@ -6,7 +6,7 @@ use crate::log;
 // of tokens in an Ink program
 pub type Kind = Token;
 
-#[derive(Debug, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum Token {
     Separator,
 
@@ -66,11 +66,11 @@ pub enum Token {
     RightBrace,
 }
 
-impl Clone for Token {
-    fn clone(&self) -> Token {
-        *self
-    }
-}
+// impl Copy for Token {
+//     fn copy(&self) -> Token {
+        
+//     }
+// }
 
 #[derive(Debug)]
 pub struct Position {
@@ -87,8 +87,8 @@ impl Position {
 // GoInk: Tok is the monomorphic struct representing all Ink program tokens
 // in the lexer.
 #[derive(Debug)]
-struct Tok {
-    kind: Kind,
+pub struct Tok {
+    pub kind: Kind,
     // GoInk: str and num are both present to implement Tok
     // as a monomorphic type for all tokens; will be zero
     // values often.
@@ -133,8 +133,8 @@ fn simple_commit(tok: Tok, lexer_state: &mut LexerState) {
     if lexer_state.debug_lexer {
         log::log_debug("lex ->".to_string(), tok.string())
     }
+    lexer_state.tokens.push(tok.kind.clone());
     *lexer_state.last_kind = tok.kind;
-    lexer_state.tokens.push(tok.kind);
 }
 
 fn simple_commit_char(kind: &Kind, lexer_state: &mut LexerState) {
