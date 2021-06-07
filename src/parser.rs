@@ -1,5 +1,6 @@
 use crate::error;
 use crate::lexer;
+use crate::log;
 
 #[derive(Debug)]
 pub enum Node {
@@ -112,11 +113,11 @@ pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) ->
         idx += 1;
 
         match err {
-            error::Err => {
+            Err(e) => {
                 if fatal_error {
-                    log::log_err(err.reason, err.message)
+                    log::log_err(e.reason, &e.message)
                 } else {
-                    log::log_safe_err(err.reason, err.message)
+                    log::log_safe_err(e.reason, &e.message)
                 }
             }
             _ => log::log_err_f(
