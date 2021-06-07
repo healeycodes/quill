@@ -128,6 +128,10 @@ pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) ->
             },
             _ => (),
         }
+
+        if debug_parser {
+            log::log_debug([format!("parse -> {}", expr.string())])
+        }
     }
 
     return nodes;
