@@ -9,8 +9,11 @@ const ANSI_BLUE_BOLD: &str = "[34;1m";
 const ANSI_GREEN_BOLD: &str = "[32;1m";
 const ANSI_RED_BOLD: &str = "[31;1m";
 
-pub fn log_debug(s1: String, s2: String) {
-    println!("{} {}", s1, s2)
+pub fn log_debug(messages: &[String]) {
+    println!(
+        "{}",
+        ANSI_BLUE_BOLD.to_owned() + "debug: " + ANSI_BLUE + &messages.join(" ") + ANSI_RESET
+    )
 }
 
 // func LogDebugf(s string, args ...interface{}) {
@@ -26,7 +29,7 @@ pub fn log_debug(s1: String, s2: String) {
 // }
 
 // GoInk: LogSafeErr is like LogErr, but does not immediately exit the interpreter
-pub fn log_safe_err(reason: i32, message: &str) {
+pub fn log_safe_err(reason: i32, messages: &[String]) {
     let err_str = match reason {
         error::ERR_SYNTAX => String::from("syntax error"),
         error::ERR_RUNTIME => String::from("runtime error"),
@@ -40,16 +43,16 @@ pub fn log_safe_err(reason: i32, message: &str) {
             + &err_str
             + ": "
             + &ANSI_RED.to_owned()
-            + &message
+            + &messages.join(" ")
             + &ANSI_RESET.to_owned()
     );
 }
 
-pub fn log_err(reason: i32, message: &str) {
-    log_safe_err(reason, message);
+pub fn log_err(reason: i32, messages: &[String]) {
+    log_safe_err(reason, messages);
     std::process::exit(reason);
 }
 
-// func LogErrf(reason int, s string, args ...interface{}) {
-// 	LogErr(reason, fmt.Sprintf(s, args...))
-// }
+pub fn log_err_f(reason: i32, messages: &[String]) {
+    log_err(reason, messages);
+}

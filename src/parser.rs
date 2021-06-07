@@ -113,17 +113,20 @@ pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) ->
         idx += 1;
 
         match err {
-            Err(e) => {
-                if fatal_error {
-                    log::log_err(e.reason, &e.message)
-                } else {
-                    log::log_safe_err(e.reason, &e.message)
+            Err(e) => match e {
+                error::Err { reason, message } => {
+                    if fatal_error {
+                        log::log_err(e.reason, &[e.message])
+                    } else {
+                        log::log_safe_err(e.reason, &[e.message])
+                    }
                 }
-            }
-            _ => log::log_err_f(
-                error::ERR_ASSERT,
-                format!("err raised that was not of Err type -> {}", err),
-            ),
+                _ => log::log_err_f(
+                    error::ERR_ASSERT,
+                    &[format!("err raised that was not of Err type -> {:?}", err)],
+                ),
+            },
+            _ => (),
         }
     }
 

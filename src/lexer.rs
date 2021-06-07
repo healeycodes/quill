@@ -130,7 +130,7 @@ struct LexerState<'a> {
 
 fn simple_commit(tok: Tok, lexer_state: &mut LexerState) {
     if lexer_state.debug_lexer {
-        log::log_debug("lex ->".to_string(), tok.string())
+        log::log_debug(&["lex ->".to_string(), tok.string()])
     }
     *lexer_state.last_kind = tok.kind.clone();
     lexer_state.tokens.push(tok);
@@ -177,9 +177,9 @@ fn commit_clear(lexer_state: &mut LexerState) {
                             ),
                         };
                         if lexer_state.fatal_error {
-                            log::log_err(e.reason, &e.message)
+                            log::log_err(e.reason, &[e.message])
                         } else {
-                            log::log_safe_err(e.reason, &e.message)
+                            log::log_safe_err(e.reason, &[e.message])
                         }
                         0.0
                     }
