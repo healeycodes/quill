@@ -130,12 +130,50 @@ pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) ->
         }
 
         if debug_parser {
-            log::log_debug([format!("parse -> {}", expr.string())])
+            log::log_debug(&[format!("parse -> {:?}", *expr as Node)])
         }
     }
 
     return nodes;
 }
+
+fn get_op_priority(t: lexer::Tok) -> i32 {
+    // GoInk: higher == greater priority
+    match t.kind {
+        lexer::Token::AccessorOp => 100,
+        lexer::Token::ModulusOp => 80,
+        lexer::Token::MultiplyOp | lexer::Token::DivideOp => 50,
+        lexer::Token::AddOp | lexer::Token::SubtractOp => 40,
+        lexer::Token::GreaterThanOp | lexer::Token::LessThanOp | lexer::Token::EqualOp => 30,
+        lexer::Token::LogicalAndOp => 20,
+        lexer::Token::LogicalXorOp => 15,
+        lexer::Token::LogicalOrOp => 10,
+        lexer::Token::DefineOp => 0,
+        _ => -1,
+    }
+}
+
+fn is_binary_op(t: lexer::Tok) -> bool {
+    match t.kind {
+        lexer::Token::AddOp
+        | lexer::Token::SubtractOp
+        | lexer::Token::MultiplyOp
+        | lexer::Token::DivideOp
+        | lexer::Token::ModulusOp
+        | lexer::Token::LogicalAndOp
+        | lexer::Token::LogicalOrOp
+        | lexer::Token::LogicalXorOp
+        | lexer::Token::GreaterThanOp
+        | lexer::Token::LessThanOp
+        | lexer::Token::EqualOp
+        | lexer::Token::DefineOp
+        | lexer::Token::AccessorOp => true,
+        _ => false,
+    }
+}
+
+// TODO
+// fn parse_binary_expression(left_operand: Node, )
 
 fn parse_expression(tokens: &[lexer::Tok]) -> (Box<Node>, i32, Result<(), error::Err>) {
     let null_node = Box::new(Node::UnaryExprNode {
