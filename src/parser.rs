@@ -235,7 +235,7 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
         _ => (),
     }
 
-    let mut atom: Node;
+    let mut atom: Box<Node>;
     match tok.kind {
         lexer::Token::NumberLiteral => (
             Box::new(Node::NumberLiteralNode {
@@ -300,4 +300,86 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
     );
 }
 
-fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {}
+fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
+    let tok = tokens[0];
+    let mut idx = 1;
+    let arguments: Vec<Box<Node>> = Vec::new();
+
+    err = guard_unexpected_input_end(tokens, idx);
+    match err {
+        Err(err) => return (Err(err), 0),
+        _ => (),
+    }
+
+    match tok.kind {
+        lexer::Token::LeftParen => {
+            while true {
+                let tk = tokens[idx];
+                match tk.kind {
+                    lexer::Token::Identifier => {
+                        let id_node = Box::new(Node::IdentifierNode {
+                            val: tk.str,
+                            position: tk.position,
+                        });
+                        arguments.push(id_node)
+                    }
+                    lexer::Token::EmptyIdentifier => {
+                        let id_node = Box::new(Node::EmptyIdentifierNode {
+                            position: tk.position,
+                        });
+                        arguments.push(id_node)
+                    }
+                    _ => break,
+                }
+                idx += 1;
+
+                err = guard_unexpected_input_end(tokens, idx);
+                match err {
+                    Err(err) => return (Err(err), 0),
+                    _ => (),
+                }
+                match tokens[idx].kind {
+                    lexer::Token::Separator => (),
+                    _ => {
+                        return (
+                            Err(error::Err {
+                                reason: error::ERR_SYNTAX,
+                                message: format!(
+                                    "expected arguments in a list separated by {}, found {}}",
+                                    lexer::Token::Separator,
+                                    tokens[idx]
+                                ),
+                            }),
+                            0,
+                        )
+                    }
+                }
+                idx += 1; // GoInk: Separator
+            }
+
+            err = guard_unexpected_input_end(tokens, idx);
+            match err {
+                Err(err) => return (Err(err), 0),
+                _ => (),
+            }
+
+            match tokens[idx].kind {
+                lexer::Token::RightParen => {}
+                _ => {
+                    return (
+                        Err(error::Err {
+                            reason: error::ERR_SYNTAX,
+                            message: format!(
+                                "expected arguments list to terminate with {}, found {}",
+                                lexer::Token::RightParen,
+                                tokens[idx]
+                            ),
+                        }),
+                        0,
+                    )
+                }
+            }
+            idx += 1 // GoInk: RightParen
+        }
+    }
+}
