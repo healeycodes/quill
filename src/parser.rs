@@ -106,11 +106,10 @@ pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) ->
             continue;
         }
 
-        let parsed_expression = parse_expression(&tokens[idx..]);
-        let (expr, incr, err) = parsed_expression;
+        let (expr, incr) = parse_expression(&tokens[idx..]);
         idx += 1;
 
-        match err {
+        match expr {
             Err(e) => match e.reason {
                 error::ERR_UNKNOWN => log::log_err_f(
                     error::ERR_ASSERT,
@@ -184,7 +183,7 @@ fn parse_binary_expression(
     // let (right_atom, idx) = parse_atom(&tokens);
 }
 
-fn parse_expression(tokens: &[lexer::Tok]) -> (Box<Node>, i32, Result<(), error::Err>) {
+fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, i32) {
     let null_node = Box::new(Node::UnaryExprNode {
         operator: lexer::Kind::AccessorOp,
         operand: Box::new(Node::EmptyIdentifierNode {
@@ -192,7 +191,7 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Box<Node>, i32, Result<(), error:
         }),
         position: lexer::Position { line: 1, col: 1 },
     });
-    return (null_node, 0, Ok(()));
+    return (Ok(null_node), 0);
     // return (
     //     null_node,
     //     0,
@@ -236,57 +235,56 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
     }
 
     let mut atom: Box<Node>;
-    match tok.kind {
-        lexer::Token::NumberLiteral => (
+    if tok.kind == lexer::Token::NumberLiteral {
+        return (
             Box::new(Node::NumberLiteralNode {
                 val: tok.num,
                 position: tok.position,
             }),
             idx,
-        ),
-        lexer::Token::StringLiteral => (
+        );
+    } else if tok.kind == lexer::Token::StringLiteral {
+        return (
             Box::new(Node::StringLiteralNode {
                 val: tok.str.clone(),
                 position: tok.position,
             }),
             idx,
-        ),
-        lexer::Token::TrueLiteral => (
+        );
+    } else if tok.kind == lexer::Token::TrueLiteral {
+        return (
             Box::new(Node::BooleanLiteralNode {
                 val: true,
                 position: tok.position,
             }),
             idx,
-        ),
-        lexer::Token::FalseLiteral => (
+        );
+    } else if tok.kind == lexer::Token::FalseLiteral {
+        return (
             Box::new(Node::BooleanLiteralNode {
                 val: false,
                 position: tok.position,
             }),
             idx,
-        ),
-        lexer::Token::Identifier => {
-            match tokens[idx].kind {
-                lexer::Token::FunctionArrow => {
-                    let (atom, idx) = parse_function_literal(tokens);
-
-                    // if err != nil {
-                    //     return nil, 0, err
-                    // }
-                    // // parseAtom should not consume trailing Separators, but
-                    // // 	parseFunctionLiteral does because it ends with expressions.
-                    // // 	so we backtrack one token.
-                    // idx--
+        );
+    } else if tok.kind == lexer::Token::Identifier {
+        match tokens[idx].kind {
+            lexer::Token::FunctionArrow => {
+                let (atom, idx) = parse_function_literal(tokens);
+                match atom {
+                    Err(atom) => return (Err(atom), 0),
+                    _ => {}
                 }
-                _ => {
-                    atom = Box::new(Node::IdentifierNode {
-                        val: tok.str.clone(),
-                        position: tok.position,
-                    })
-                }
+                idx -= 1
             }
+            _ => {
+                atom = Box::new(Node::IdentifierNode {
+                    str: tok.str,
+                    position: tok.position,
+                })
+            } // GoInk: may be called as a function, so flows beyond switch block
         }
-    };
+    }
 
     // Del
     let (atom, idx) = parse_atom(&tokens[idx..]);
@@ -303,7 +301,7 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
 fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
     let tok = tokens[0];
     let mut idx = 1;
-    let arguments: Vec<Box<Node>> = Vec::new();
+    let arguments: Vec<Node> = Vec::new();
 
     err = guard_unexpected_input_end(tokens, idx);
     match err {
@@ -313,20 +311,20 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Er
 
     match tok.kind {
         lexer::Token::LeftParen => {
-            while true {
+            loop {
                 let tk = tokens[idx];
                 match tk.kind {
                     lexer::Token::Identifier => {
-                        let id_node = Box::new(Node::IdentifierNode {
+                        let id_node = Node::IdentifierNode {
                             val: tk.str,
                             position: tk.position,
-                        });
+                        };
                         arguments.push(id_node)
                     }
                     lexer::Token::EmptyIdentifier => {
-                        let id_node = Box::new(Node::EmptyIdentifierNode {
+                        let id_node = Node::EmptyIdentifierNode {
                             position: tk.position,
-                        });
+                        };
                         arguments.push(id_node)
                     }
                     _ => break,
@@ -370,7 +368,7 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Er
                         Err(error::Err {
                             reason: error::ERR_SYNTAX,
                             message: format!(
-                                "expected arguments list to terminate with {}, found {}",
+                                "expected arguments list to terminate with {:?}, found {:?}",
                                 lexer::Token::RightParen,
                                 tokens[idx]
                             ),
@@ -382,26 +380,66 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Er
             idx += 1 // GoInk: RightParen
         }
         lexer::Token::Identifier => {
-            let id_node = Box::new(Node::IdentifierNode {
+            let id_node = Node::IdentifierNode {
                 val: tk.str,
                 position: tk.position,
-            });
+            };
             arguments.push(id_node)
         }
         lexer::Token::EmptyIdentifier => {
-            let id_node = Box::new(Node::EmptyIdentifier {
+            let id_node = Node::EmptyIdentifierNode {
                 position: tk.position,
-            });
+            };
             arguments.push(id_node)
         }
         _ => {
             return (
                 Err(error::Err {
                     reason: error::ERR_SYNTAX,
-                    message: format!("malformed arguments list in function at {}", tok),
+                    message: format!("malformed arguments list in function at {:?}", tok),
                 }),
                 0,
             )
         }
     }
+
+    err = guard_unexpected_input_end(tokens, idx);
+    match err {
+        Err(err) => return (Err(err), 0),
+        _ => {}
+    }
+
+    match tokens[idx].kind {
+        lexer::Token::FunctionArrow => {
+            return (
+                Err(error::Err {
+                    reason: error::ERR_SYNTAX,
+                    message: format!(
+                        "expected {:?} but found {:?}",
+                        lexer::Token::FunctionArrow,
+                        tokens[idx]
+                    ),
+                }),
+                0,
+            )
+        }
+        _ => {}
+    }
+    idx += 1; // GoInk: FunctionArrow
+
+    let (body, incr) = parse_expression(tokens);
+    match body {
+        Err(body) => return (Err(body), 0),
+        _ => {}
+    }
+    idx += 1;
+
+    return (
+        Ok(Box::new(Node::FunctionLiteralNode {
+            arguments: arguments,
+            body: body.unwrap(),
+            position: tokens[0].position,
+        })),
+        idx,
+    );
 }
