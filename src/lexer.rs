@@ -6,7 +6,7 @@ use crate::log;
 // of tokens in an Ink program
 pub type Kind = Token;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Token {
     Separator,
 
@@ -71,7 +71,7 @@ pub enum Token {
 //     }
 // }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct Position {
     pub line: i32,
     pub col: i32,
@@ -91,9 +91,9 @@ pub struct Tok {
     // GoInk: str and num are both present to implement Tok
     // as a monomorphic type for all tokens; will be zero
     // values often.
-    str: String,
-    num: f64,
-    position: Position,
+    pub str: String,
+    pub num: f64,
+    pub position: Position,
 }
 
 impl Tok {

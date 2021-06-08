@@ -71,7 +71,7 @@ pub enum Node {
     },
 }
 
-fn guard_unexpected_input_end(tokens: &Vec<lexer::Tok>, idx: usize) -> Result<(), error::Err> {
+fn guard_unexpected_input_end(tokens: &[lexer::Tok], idx: usize) -> Result<(), error::Err> {
     if idx >= tokens.len() {
         if tokens.len() > 0 {
             return Err(error::Err {
@@ -107,24 +107,22 @@ pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) ->
         }
 
         let parsed_expression = parse_expression(&tokens[idx..]);
-        let expr = parsed_expression.0;
-        let incr = parsed_expression.1;
-        let err = parsed_expression.2;
+        let (expr, incr, err) = parsed_expression;
         idx += 1;
 
         match err {
             Err(e) => match e.reason {
-                error::ERR_UNKNOWN => {
+                error::ERR_UNKNOWN => log::log_err_f(
+                    error::ERR_ASSERT,
+                    &[format!("err raised that was not of Err type -> {:?}", e)],
+                ),
+                _ => {
                     if fatal_error {
                         log::log_err(e.reason, &[e.message])
                     } else {
                         log::log_safe_err(e.reason, &[e.message])
                     }
                 }
-                _ => log::log_err_f(
-                    error::ERR_ASSERT,
-                    &[format!("err raised that was not of Err type -> {:?}", e)],
-                ),
             },
             _ => (),
         }
@@ -172,8 +170,19 @@ fn is_binary_op(t: lexer::Tok) -> bool {
     }
 }
 
-// TODO
-// fn parse_binary_expression(left_operand: Node, )
+fn parse_binary_expression(
+    left_operand: Node,
+    operator: lexer::Tok,
+    tokens: &Vec<lexer::Tok>,
+) -> Result<(Box<Node>, i32), error::Err> {
+    return Ok((
+        Box::new(Node::EmptyIdentifierNode {
+            position: lexer::Position { line: 1, col: 1 },
+        }),
+        0,
+    ));
+    // let (right_atom, idx) = parse_atom(&tokens);
+}
 
 fn parse_expression(tokens: &[lexer::Tok]) -> (Box<Node>, i32, Result<(), error::Err>) {
     let null_node = Box::new(Node::UnaryExprNode {
@@ -192,4 +201,80 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Box<Node>, i32, Result<(), error:
     //         reason: -1,
     //     }),
     // );
+}
+
+fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
+    let mut err = guard_unexpected_input_end(tokens, 0);
+    match err {
+        Err(err) => return (Err(err), 0),
+        _ => (),
+    }
+
+    let tok = &tokens[0];
+    let idx = 1;
+
+    if tok.kind == lexer::Token::NegationOp {
+        let (atom, idx) = parse_atom(&tokens[idx..]);
+        match atom {
+            Err(atom) => return (Err(atom), 0),
+            _ => (),
+        }
+        return (
+            Ok(Box::new(Node::UnaryExprNode {
+                operator: tok.kind,
+                operand: atom.unwrap(),
+                position: tok.position,
+            })),
+            idx + 1,
+        );
+    }
+
+    err = guard_unexpected_input_end(tokens, idx);
+    match err {
+        Err(err) => return (Err(err), 0),
+        _ => (),
+    }
+
+    let mut atom: Node;
+    match tok.kind {
+        lexer::Token::NumberLiteral => (
+            Box::new(Node::NumberLiteralNode {
+                val: tok.num,
+                position: tok.position,
+            }),
+            idx,
+        ),
+        lexer::Token::StringLiteral => (
+            Box::new(Node::StringLiteralNode {
+                val: tok.str.clone(),
+                position: tok.position,
+            }),
+            idx,
+        ),
+        lexer::Token::TrueLiteral => (
+            Box::new(Node::BooleanLiteralNode {
+                val: true,
+                position: tok.position,
+            }),
+            idx,
+        ),
+        lexer::Token::FalseLiteral => (
+            Box::new(Node::BooleanLiteralNode {
+                val: false,
+                position: tok.position,
+            }),
+            idx,
+        ),
+    };
+
+    // Del
+    let (atom, idx) = parse_atom(&tokens[idx..]);
+    return (
+        Ok(Box::new(Node::UnaryExprNode {
+            operator: tok.kind,
+            operand: atom.unwrap(),
+            position: tok.position,
+        })),
+        idx + 1,
+    );
 }
