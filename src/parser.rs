@@ -265,6 +265,27 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
             }),
             idx,
         ),
+        lexer::Token::Identifier => {
+            match tokens[idx].kind {
+                lexer::Token::FunctionArrow => {
+                    let (atom, idx) = parse_function_literal(tokens);
+
+                    // if err != nil {
+                    //     return nil, 0, err
+                    // }
+                    // // parseAtom should not consume trailing Separators, but
+                    // // 	parseFunctionLiteral does because it ends with expressions.
+                    // // 	so we backtrack one token.
+                    // idx--
+                }
+                _ => {
+                    atom = Box::new(Node::IdentifierNode {
+                        val: tok.str.clone(),
+                        position: tok.position,
+                    })
+                }
+            }
+        }
     };
 
     // Del
@@ -278,3 +299,5 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
         idx + 1,
     );
 }
+
+fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {}
