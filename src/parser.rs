@@ -124,7 +124,7 @@ pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) ->
                     }
                 }
             },
-            _ => (),
+            _ => {}
         }
 
         if debug_parser {
@@ -207,7 +207,7 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
     let mut err = guard_unexpected_input_end(tokens, 0);
     match err {
         Err(err) => return (Err(err), 0),
-        _ => (),
+        _ => {}
     }
 
     let tok = &tokens[0];
@@ -217,7 +217,7 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
         let (atom, idx) = parse_atom(&tokens[idx..]);
         match atom {
             Err(atom) => return (Err(atom), 0),
-            _ => (),
+            _ => {}
         }
         return (
             Ok(Box::new(Node::UnaryExprNode {
@@ -232,7 +232,7 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
     err = guard_unexpected_input_end(tokens, idx);
     match err {
         Err(err) => return (Err(err), 0),
-        _ => (),
+        _ => {}
     }
 
     let mut atom: Box<Node>;
@@ -308,7 +308,7 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Er
     err = guard_unexpected_input_end(tokens, idx);
     match err {
         Err(err) => return (Err(err), 0),
-        _ => (),
+        _ => {}
     }
 
     match tok.kind {
@@ -336,7 +336,7 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Er
                 err = guard_unexpected_input_end(tokens, idx);
                 match err {
                     Err(err) => return (Err(err), 0),
-                    _ => (),
+                    _ => {}
                 }
                 match tokens[idx].kind {
                     lexer::Token::Separator => (),
@@ -360,7 +360,7 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Er
             err = guard_unexpected_input_end(tokens, idx);
             match err {
                 Err(err) => return (Err(err), 0),
-                _ => (),
+                _ => {}
             }
 
             match tokens[idx].kind {
@@ -380,6 +380,28 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Er
                 }
             }
             idx += 1 // GoInk: RightParen
+        }
+        lexer::Token::Identifier => {
+            let id_node = Box::new(Node::IdentifierNode {
+                val: tk.str,
+                position: tk.position,
+            });
+            arguments.push(id_node)
+        }
+        lexer::Token::EmptyIdentifier => {
+            let id_node = Box::new(Node::EmptyIdentifier {
+                position: tk.position,
+            });
+            arguments.push(id_node)
+        }
+        _ => {
+            return (
+                Err(error::Err {
+                    reason: error::ERR_SYNTAX,
+                    message: format!("malformed arguments list in function at {}", tok),
+                }),
+                0,
+            )
         }
     }
 }
