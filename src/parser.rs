@@ -2,74 +2,102 @@ use crate::error;
 use crate::lexer;
 use crate::log;
 
-#[derive(Debug)]
-pub enum Node {
-    UnaryExprNode {
-        operator: lexer::Kind,
-        operand: Box<Node>,
-        position: lexer::Position,
-    },
-    BinaryExprNode {
-        operator: lexer::Kind,
-        left_operand: Box<Node>,
-        right_operand: Box<Node>,
-        position: lexer::Position,
-    },
-    FunctionCallNode {
-        function: Box<Node>,
-        arguments: Vec<Node>,
-    },
-    MatchClauseNode {
-        target: Box<Node>,
-        expression: Box<Node>,
-    },
-    MatchExprNode {
-        condition: Box<Node>,
-        clauses: Vec<Node>, // []MatchClauseNode
-        position: lexer::Position,
-    },
-    ExpressionListNode {
-        expressions: Vec<Node>,
-        position: lexer::Position,
-    },
-    EmptyIdentifierNode {
-        position: lexer::Position,
-    },
-    IdentifierNode {
-        val: String,
-        position: lexer::Position,
-    },
-    NumberLiteralNode {
-        val: f64,
-        position: lexer::Position,
-    },
-    StringLiteralNode {
-        val: String,
-        position: lexer::Position,
-    },
-    BooleanLiteralNode {
-        val: bool,
-        position: lexer::Position,
-    },
-    ObjectLiteralNode {
-        entries: Vec<Node>, // []ObjectEntryNode
-        position: lexer::Position,
-    },
-    ObjectEntryNode {
-        key: Box<Node>,
-        val: Box<Node>,
-        position: lexer::Position,
-    },
-    ListLiteralNode {
-        vals: Vec<Node>,
-        position: lexer::Position,
-    },
-    FunctionLiteralNode {
-        arguments: Vec<Node>,
-        body: Box<Node>,
-        position: lexer::Position,
-    },
+struct UnaryExprNode {
+    operator: lexer::Kind,
+    operand: Box<Node>,
+    position: lexer::Position,
 }
+struct BinaryExprNode {
+    operator: lexer::Kind,
+    left_operand: Box<Node>,
+    right_operand: Box<Node>,
+    position: lexer::Position,
+}
+struct FunctionCallNode {
+    function: Box<Node>,
+    arguments: Vec<Node>,
+}
+struct MatchClauseNode {
+    target: Box<Node>,
+    expression: Box<Node>,
+}
+struct MatchExprNode {
+    condition: Box<Node>,
+    clauses: Vec<MatchClauseNode>,
+    position: lexer::Position,
+}
+struct ExpressionListNode {
+    expressions: Vec<Node>,
+    position: lexer::Position,
+}
+struct EmptyIdentifierNode {
+    position: lexer::Position,
+}
+struct IdentifierNode {
+    val: String,
+    position: lexer::Position,
+}
+struct NumberLiteralNode {
+    val: f64,
+    position: lexer::Position,
+}
+struct StringLiteralNode {
+    val: String,
+    position: lexer::Position,
+}
+struct BooleanLiteralNode {
+    val: bool,
+    position: lexer::Position,
+}
+struct ObjectLiteralNode {
+    entries: Vec<ObjectEntryNode>,
+    position: lexer::Position,
+}
+struct ObjectEntryNode {
+    key: Box<Node>,
+    val: Box<Node>,
+    position: lexer::Position,
+}
+struct ListLiteralNode {
+    vals: Vec<Node>,
+    position: lexer::Position,
+}
+struct FunctionLiteralNode {
+    arguments: Vec<Node>,
+    body: Box<Node>,
+    position: lexer::Position,
+}
+
+#[derive(Debug)]
+trait Node {
+    fn position(&self) -> lexer::Position;
+}
+
+macro_rules! impl_node {
+    ($($t:ty),+) => {
+        $(impl Node for $t {
+            fn position(&self) -> lexer::Position {
+                return self.position;
+            }
+        })+
+    }
+}
+
+impl_node!(
+    UnaryExprNode,
+    BinaryExprNode,
+    MatchExprNode,
+    ExpressionListNode,
+    EmptyIdentifierNode,
+    IdentifierNode,
+    NumberLiteralNode,
+    StringLiteralNode,
+    BooleanLiteralNode,
+    ObjectEntryNode,
+    ObjectLiteralNode,
+    ListLiteralNode,
+    FunctionLiteralNode
+);
 
 fn guard_unexpected_input_end(tokens: &[lexer::Tok], idx: usize) -> Result<(), error::Err> {
     if idx >= tokens.len() {
@@ -94,8 +122,8 @@ fn guard_unexpected_input_end(tokens: &[lexer::Tok], idx: usize) -> Result<(), e
 
 // GoInk(edited): Parse transforms a list of Tok (tokens) to Node (AST nodes).
 // This implementation uses recursive descent parsing.
-pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) -> Vec<Node> {
-    let mut nodes: Vec<Node> = Vec::new();
+pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) -> Vec<&Node> {
+    let mut nodes: Vec<&Node> = Vec::new();
     let mut idx = 0;
     let length = tokens.len();
 
@@ -110,16 +138,16 @@ pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) ->
         idx += 1;
 
         match expr {
-            Err(e) => match e.reason {
+            Err(ref e) => match e.reason {
                 error::ERR_UNKNOWN => log::log_err_f(
                     error::ERR_ASSERT,
                     &[format!("err raised that was not of Err type -> {:?}", e)],
                 ),
                 _ => {
                     if fatal_error {
-                        log::log_err(e.reason, &[e.message])
+                        log::log_err(e.reason, &[e.message.clone()])
                     } else {
-                        log::log_safe_err(e.reason, &[e.message])
+                        log::log_safe_err(e.reason, &[e.message.clone()])
                     }
                 }
             },
@@ -127,14 +155,14 @@ pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) ->
         }
 
         if debug_parser {
-            log::log_debug(&[format!("parse -> {:?}", *expr as Node)])
+            log::log_debug(&[format!("parse -> {:?}", expr.unwrap())])
         }
     }
 
     return nodes;
 }
 
-fn get_op_priority(t: lexer::Tok) -> i32 {
+fn get_op_priority(t: lexer::Tok) -> isize {
     // GoInk: higher == greater priority
     match t.kind {
         lexer::Token::AccessorOp => 100,
@@ -173,9 +201,9 @@ fn parse_binary_expression(
     left_operand: Node,
     operator: lexer::Tok,
     tokens: &Vec<lexer::Tok>,
-) -> Result<(Box<Node>, i32), error::Err> {
+) -> Result<(Box<Node>, usize), error::Err> {
     return Ok((
-        Box::new(Node::EmptyIdentifierNode {
+        Box::new(EmptyIdentifierNode {
             position: lexer::Position { line: 1, col: 1 },
         }),
         0,
@@ -183,15 +211,15 @@ fn parse_binary_expression(
     // let (right_atom, idx) = parse_atom(&tokens);
 }
 
-fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, i32) {
-    let null_node = Box::new(Node::UnaryExprNode {
+fn parse_expression(tokens: &[lexer::Tok]) -> (Result<&Node, error::Err>, usize) {
+    let null_node = UnaryExprNode {
         operator: lexer::Kind::AccessorOp,
-        operand: Box::new(Node::EmptyIdentifierNode {
+        operand: Box::new(&EmptyIdentifierNode {
             position: lexer::Position { line: 1, col: 1 },
         }),
         position: lexer::Position { line: 1, col: 1 },
-    });
-    return (Ok(null_node), 0);
+    };
+    return (Ok(&null_node), 0);
     // return (
     //     null_node,
     //     0,
@@ -210,7 +238,7 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
     }
 
     let tok = &tokens[0];
-    let idx = 1;
+    let mut idx = 1;
 
     if tok.kind == lexer::Token::NegationOp {
         let (atom, idx) = parse_atom(&tokens[idx..]);
@@ -219,7 +247,7 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
             _ => {}
         }
         return (
-            Ok(Box::new(Node::UnaryExprNode {
+            Ok(Box::new(UnaryExprNode {
                 operator: tok.kind,
                 operand: atom.unwrap(),
                 position: tok.position,
@@ -237,40 +265,40 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
     let mut atom: Box<Node>;
     if tok.kind == lexer::Token::NumberLiteral {
         return (
-            Box::new(Node::NumberLiteralNode {
+            Ok(Box::new(NumberLiteralNode {
                 val: tok.num,
                 position: tok.position,
-            }),
+            })),
             idx,
         );
     } else if tok.kind == lexer::Token::StringLiteral {
         return (
-            Box::new(Node::StringLiteralNode {
+            Ok(Box::new(StringLiteralNode {
                 val: tok.str.clone(),
                 position: tok.position,
-            }),
+            })),
             idx,
         );
     } else if tok.kind == lexer::Token::TrueLiteral {
         return (
-            Box::new(Node::BooleanLiteralNode {
+            Ok(Box::new(BooleanLiteralNode {
                 val: true,
                 position: tok.position,
-            }),
+            })),
             idx,
         );
     } else if tok.kind == lexer::Token::FalseLiteral {
         return (
-            Box::new(Node::BooleanLiteralNode {
+            Ok(Box::new(BooleanLiteralNode {
                 val: false,
                 position: tok.position,
-            }),
+            })),
             idx,
         );
     } else if tok.kind == lexer::Token::Identifier {
         match tokens[idx].kind {
             lexer::Token::FunctionArrow => {
-                let (atom, idx) = parse_function_literal(tokens);
+                let (atom, mut idx) = parse_function_literal(tokens);
                 match atom {
                     Err(atom) => return (Err(atom), 0),
                     _ => {}
@@ -278,18 +306,114 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
                 idx -= 1
             }
             _ => {
-                atom = Box::new(Node::IdentifierNode {
-                    str: tok.str,
+                atom = Box::new(IdentifierNode {
+                    val: tok.str.clone(),
                     position: tok.position,
                 })
             } // GoInk: may be called as a function, so flows beyond switch block
         }
+    } else if tok.kind == lexer::Token::LeftBrace {
+        let mut entries: Vec<Node> = Vec::new();
+
+        while tokens[idx].kind != lexer::Token::RightBrace {
+            let (key_expr, key_incr) = parse_expression(&tokens[idx..]);
+            match key_expr {
+                Err(key_expr) => return (Err(key_expr), 0),
+                _ => {}
+            }
+
+            idx += key_incr;
+            err = guard_unexpected_input_end(tokens, idx);
+            match err {
+                Err(err) => return (Err(err), 0),
+                _ => {}
+            }
+
+            if tokens[idx].kind == lexer::Token::KeyValueSeparator {
+                idx += 1;
+            } else {
+                return (
+                    Err(error::Err {
+                        reason: error::ERR_SYNTAX,
+                        message: format!(
+                            "expected {:?} after composite key, found {:?}",
+                            lexer::Token::KeyValueSeparator,
+                            tokens[idx]
+                        ),
+                    }),
+                    0,
+                );
+            }
+
+            err = guard_unexpected_input_end(tokens, idx);
+            match err {
+                Err(err) => return (Err(err), 0),
+                _ => {}
+            }
+
+            let (val_expr, val_incr) = parse_expression(&tokens[idx..]);
+            match val_expr {
+                Err(val_expr) => return (Err(val_expr), 0),
+                Ok(val_expr) => {
+                    // GoInk (edited): Separator consumed by parse_expression
+                    idx += val_incr;
+                    entries.push(ObjectEntryNode {
+                        key: Box::new(key_expr.unwrap()),
+                        val: val_expr,
+                        position: (*key_expr.unwrap()).position(),
+                    });
+                }
+            }
+
+            err = guard_unexpected_input_end(tokens, idx);
+            match err {
+                Err(err) => return (Err(err), 0),
+                _ => {}
+            }
+            idx += 1; // GoInk: RightBrace
+
+            return (
+                Ok(Box::new(ObjectLiteralNode {
+                    entries: entries,
+                    position: tok.position,
+                })),
+                idx,
+            );
+        }
+    } else if tok.kind == lexer::Token::LeftBracket {
+        let mut vals: Vec<&Node> = Vec::new();
+
+        while tokens[idx].kind != lexer::Token::RightBracket {
+            let (expr, incr) = parse_expression(&tokens[idx..]);
+            match expr {
+                Err(expr) => return (Err(expr), 0),
+                Ok(expr) => {
+                    idx += incr;
+                    vals.push(expr);
+                }
+            }
+
+            let err = guard_unexpected_input_end(tokens, idx);
+            match err {
+                Err(err) => return (Err(err), 0),
+                _ => {}
+            }
+        }
+        idx += 1; // GoInk: RightBracket
+
+        return (
+            Ok(Box::new(ListLiteralNode {
+                vals: vals,
+                position: tok.position,
+            })),
+            idx,
+        );
     }
 
     // Del
     let (atom, idx) = parse_atom(&tokens[idx..]);
     return (
-        Ok(Box::new(Node::UnaryExprNode {
+        Ok(Box::new(UnaryExprNode {
             operator: tok.kind,
             operand: atom.unwrap(),
             position: tok.position,
@@ -298,12 +422,12 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
     );
 }
 
-fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
-    let tok = tokens[0];
+fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<&Node, error::Err>, usize) {
+    let tok = &tokens[0];
     let mut idx = 1;
-    let arguments: Vec<Node> = Vec::new();
+    let mut arguments: Vec<&Node> = Vec::new();
 
-    err = guard_unexpected_input_end(tokens, idx);
+    let err = guard_unexpected_input_end(tokens, idx);
     match err {
         Err(err) => return (Err(err), 0),
         _ => {}
@@ -312,17 +436,17 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Er
     match tok.kind {
         lexer::Token::LeftParen => {
             loop {
-                let tk = tokens[idx];
+                let tk = &tokens[idx];
                 match tk.kind {
                     lexer::Token::Identifier => {
-                        let id_node = Node::IdentifierNode {
-                            val: tk.str,
+                        let id_node = &IdentifierNode {
+                            val: tk.str.clone(),
                             position: tk.position,
                         };
                         arguments.push(id_node)
                     }
                     lexer::Token::EmptyIdentifier => {
-                        let id_node = Node::EmptyIdentifierNode {
+                        let id_node = &EmptyIdentifierNode {
                             position: tk.position,
                         };
                         arguments.push(id_node)
@@ -331,7 +455,7 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Er
                 }
                 idx += 1;
 
-                err = guard_unexpected_input_end(tokens, idx);
+                let err = guard_unexpected_input_end(tokens, idx);
                 match err {
                     Err(err) => return (Err(err), 0),
                     _ => {}
@@ -343,7 +467,7 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Er
                             Err(error::Err {
                                 reason: error::ERR_SYNTAX,
                                 message: format!(
-                                    "expected arguments in a list separated by {}, found {}}",
+                                    "expected arguments in a list separated by {:?}, found {:?}",
                                     lexer::Token::Separator,
                                     tokens[idx]
                                 ),
@@ -355,7 +479,7 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Er
                 idx += 1; // GoInk: Separator
             }
 
-            err = guard_unexpected_input_end(tokens, idx);
+            let err = guard_unexpected_input_end(tokens, idx);
             match err {
                 Err(err) => return (Err(err), 0),
                 _ => {}
@@ -380,15 +504,15 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Er
             idx += 1 // GoInk: RightParen
         }
         lexer::Token::Identifier => {
-            let id_node = Node::IdentifierNode {
-                val: tk.str,
-                position: tk.position,
+            let id_node = &IdentifierNode {
+                val: tok.str.clone(),
+                position: tok.position,
             };
             arguments.push(id_node)
         }
         lexer::Token::EmptyIdentifier => {
-            let id_node = Node::EmptyIdentifierNode {
-                position: tk.position,
+            let id_node = &EmptyIdentifierNode {
+                position: tok.position,
             };
             arguments.push(id_node)
         }
@@ -403,7 +527,7 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Er
         }
     }
 
-    err = guard_unexpected_input_end(tokens, idx);
+    let err = guard_unexpected_input_end(tokens, idx);
     match err {
         Err(err) => return (Err(err), 0),
         _ => {}
@@ -435,11 +559,11 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Er
     idx += 1;
 
     return (
-        Ok(Box::new(Node::FunctionLiteralNode {
+        Ok(&FunctionLiteralNode {
             arguments: arguments,
-            body: body.unwrap(),
+            body: Box::new(body),
             position: tokens[0].position,
-        })),
+        }),
         idx,
     );
 }
