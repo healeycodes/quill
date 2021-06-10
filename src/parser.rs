@@ -24,7 +24,7 @@ impl fmt::Display for BinaryExprNode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         return write!(
             f,
-            "Binary ({}) {} ({})",
+            "Binary ({}) {:?} ({})",
             self.left_operand, self.operator, self.right_operand
         );
     }
@@ -36,14 +36,15 @@ struct FunctionCallNode {
 }
 impl fmt::Display for FunctionCallNode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let args: Vec<String> = Vec::new();
         return write!(
             f,
             "Call ({}) on ({})",
             self.function,
-            self.arguments
+            (*self.arguments)
                 .into_iter()
-                .map(|arg| format!("{}", arg).join(", "))
+                .map(|arg| arg.to_string())
+                .collect::<Vec<String>>()
+                .join(", ")
         );
     }
 }
@@ -69,9 +70,10 @@ impl fmt::Display for MatchExprNode {
             f,
             "Match on ({}) to {{{}}}",
             self.condition,
-            self.clauses
+            (*self.clauses)
                 .into_iter()
-                .map(|clause| format!("{}", clause))
+                .map(|clause| clause.to_string())
+                .collect::<Vec<String>>()
                 .join(", ")
         );
     }
@@ -85,11 +87,11 @@ impl fmt::Display for ExpressionListNode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         return write!(
             f,
-            "Match on ({}) to {{{}}}",
-            self.condition,
-            self.expressions
+            "Expression List ({})",
+            (*self.expressions)
                 .into_iter()
-                .map(|expr| format!("{}", expr))
+                .map(|expr| expr.to_string())
+                .collect::<Vec<String>>()
                 .join(", ")
         );
     }
@@ -186,7 +188,7 @@ impl fmt::Display for FunctionLiteralNode {
     }
 }
 
-trait Node: fmt::Display {
+pub trait Node: fmt::Display {
     fn position(&self) -> lexer::Position;
 }
 
@@ -272,7 +274,7 @@ pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) ->
         }
 
         if debug_parser {
-            log::log_debug(&[format!("parse -> {}", expr)])
+            log::log_debug(&[format!("parse -> {}", expr.unwrap())])
         }
     }
 
@@ -474,11 +476,11 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
                 Ok(val_expr) => {
                     // GoInk (edited): Separator consumed by parse_expression
                     idx += val_incr;
-                    entries.push(ObjectEntryNode {
-                        key: key_expr.unwrap(),
-                        val: val_expr,
-                        position: (*key_expr.unwrap()).position(),
-                    });
+                    // entries.push(ObjectEntryNode {
+                    //     key: key_expr.unwrap().copy(),
+                    //     val: val_expr,
+                    //     position: key_expr.unwrap().position(),
+                    // });
                 }
             }
 

@@ -22,5 +22,5 @@ fn main() {
     let tokens: &mut Vec<lexer::Tok> = &mut Vec::new();
     lexer::tokenize(tokens, &file_unicode, true, true);
     let ast_nodes = parser::parse(tokens, true, true);
-    println!("{:#?}", ast_nodes);
+    println!("{}", ast_nodes.len());
 }
