@@ -422,6 +422,9 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
                     Err(atom) => return (Err(atom), 0),
                     _ => {}
                 }
+                // GoInk: parseAtom should not consume trailing Separators, but
+                // parseFunctionLiteral does because it ends with expressions.
+                // so we backtrack one token.
                 idx -= 1
             }
             _ => {
@@ -476,11 +479,15 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
                 Ok(val_expr) => {
                     // GoInk (edited): Separator consumed by parse_expression
                     idx += val_incr;
-                    // entries.push(ObjectEntryNode {
-                    //     key: key_expr.unwrap().copy(),
-                    //     val: val_expr,
-                    //     position: key_expr.unwrap().position(),
-                    // });
+
+                    // TODO: there must be a shorthand for this?
+                    let key_expr = key_expr.unwrap();
+                    let position = key_expr.position();
+                    entries.push(ObjectEntryNode {
+                        key: key_expr,
+                        val: val_expr,
+                        position: position,
+                    });
                 }
             }
 
@@ -527,18 +534,33 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
             })),
             idx,
         );
+    } else {
+        return (
+            Err(error::Err {
+                reason: error::ERR_SYNTAX,
+                message: format!("unexpected start of atom, found {:?}", tok),
+            }),
+            0,
+        );
     }
 
-    // Del
-    let (atom, idx) = parse_atom(&tokens[idx..]);
-    return (
-        Ok(Box::new(UnaryExprNode {
-            operator: tok.kind,
-            operand: atom.unwrap(),
-            position: tok.position,
-        })),
-        idx + 1,
-    );
+    // GoInk (edited): bounds check here because parse_expression may have consumed all tokens before this
+    while idx < tokens.len() && tokens[idx].kind == lexer::Token::LeftParen {
+        let (atom, incr) = parse_function_call(atom, &tokens[idx..]);
+        match atom {
+            Err(atom) => return (Err(atom), 0),
+            _ => {}
+        }
+        idx += incr;
+
+        let err = guard_unexpected_input_end(tokens, idx);
+        match err {
+            Err(err) => return (Err(err), 0),
+            _ => {}
+        }
+    }
+
+    return (Ok(atom), idx);
 }
 
 fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
@@ -682,6 +704,47 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Er
             arguments: arguments,
             body: body.unwrap(),
             position: tokens[0].position,
+        })),
+        idx,
+    );
+}
+
+fn parse_function_call(
+    function: Box<Node>,
+    tokens: &[lexer::Tok],
+) -> (Result<Box<FunctionCallNode>, error::Err>, usize) {
+    let mut idx = 1;
+    let mut arguments: Vec<Box<Node>> = Vec::new();
+
+    let err = guard_unexpected_input_end(tokens, idx);
+    match err {
+        Err(err) => return (Err(err), 0),
+        _ => {}
+    }
+
+    while tokens[idx].kind != lexer::Token::RightParen {
+        let (expr, incr) = parse_expression(&tokens[idx..]);
+        match expr {
+            Err(expr) => return (Err(expr), 0),
+            _ => {}
+        }
+
+        idx += 1;
+        arguments.push(expr.unwrap());
+
+        let err = guard_unexpected_input_end(tokens, idx);
+        match err {
+            Err(err) => return (Err(err), 0),
+            _ => {}
+        }
+    }
+
+    idx += 1; // GoInk: RightParen
+
+    return (
+        Ok(Box::new(FunctionCallNode {
+            function: function,
+            arguments: arguments,
         })),
         idx,
     );
