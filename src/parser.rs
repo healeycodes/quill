@@ -388,168 +388,204 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
     }
 
     let mut atom: Box<Node>;
-    if tok.kind == lexer::Token::NumberLiteral {
-        return (
-            Ok(Box::new(NumberLiteralNode {
-                val: tok.num,
-                position: tok.position,
-            })),
-            idx,
-        );
-    } else if tok.kind == lexer::Token::StringLiteral {
-        return (
-            Ok(Box::new(StringLiteralNode {
-                val: tok.str.clone(),
-                position: tok.position,
-            })),
-            idx,
-        );
-    } else if tok.kind == lexer::Token::TrueLiteral {
-        return (
-            Ok(Box::new(BooleanLiteralNode {
-                val: true,
-                position: tok.position,
-            })),
-            idx,
-        );
-    } else if tok.kind == lexer::Token::FalseLiteral {
-        return (
-            Ok(Box::new(BooleanLiteralNode {
-                val: false,
-                position: tok.position,
-            })),
-            idx,
-        );
-    } else if tok.kind == lexer::Token::Identifier {
-        match tokens[idx].kind {
-            lexer::Token::FunctionArrow => {
-                let (atom, mut idx) = parse_function_literal(tokens);
-                match atom {
-                    Err(atom) => return (Err(atom), 0),
-                    _ => {}
-                }
-                // GoInk (edited): parse_atom should not consume trailing Separators, but
-                // parseFunctionLiteral does because it ends with expressions.
-                // so we backtrack one token.
-                idx -= 1
-            }
-            _ => {
-                atom = Box::new(IdentifierNode {
+    match tok.kind {
+        lexer::Token::NumberLiteral => {
+            return (
+                Ok(Box::new(NumberLiteralNode {
+                    val: tok.num,
+                    position: tok.position,
+                })),
+                idx,
+            );
+        }
+        lexer::Token::StringLiteral => {
+            return (
+                Ok(Box::new(StringLiteralNode {
                     val: tok.str.clone(),
                     position: tok.position,
-                })
-            } // GoInk: may be called as a function, so flows beyond
-              // switch block
+                })),
+                idx,
+            );
         }
-    } else if tok.kind == lexer::Token::LeftBrace {
-        let mut entries: Vec<ObjectEntryNode> = Vec::new();
+        lexer::Token::TrueLiteral => {
+            return (
+                Ok(Box::new(BooleanLiteralNode {
+                    val: true,
+                    position: tok.position,
+                })),
+                idx,
+            );
+        }
+        lexer::Token::FalseLiteral => {
+            return (
+                Ok(Box::new(BooleanLiteralNode {
+                    val: false,
+                    position: tok.position,
+                })),
+                idx,
+            );
+        }
+        lexer::Token::Identifier => {
+            match tokens[idx].kind {
+                lexer::Token::FunctionArrow => {
+                    (atom, idx) = parse_function_literal(tokens);
+                    match atom {
+                        Err(atom) => return (Err(atom), 0),
+                        _ => {}
+                    }
+                    // GoInk (edited): parse_atom should not consume trailing Separators, but
+                    // parseFunctionLiteral does because it ends with expressions.
+                    // so we backtrack one token.
+                    idx -= 1
+                }
+                _ => {
+                    atom = Box::new(IdentifierNode {
+                        val: tok.str.clone(),
+                        position: tok.position,
+                    })
+                } // GoInk: may be called as a function, so flows beyond
+                  // switch block
+            }
+        }
+        lexer::Token::EmptyIdentifier => {
+            match tokens[idx].kind {
+                lexer::Token::FunctionArrow => {
+                    (atom, idx) = parse_function_literal(&tokens);
+                    match atom {
+                        Err(atom) => return (Err(atom), 0),
+                        _ => {}
+                    }
 
-        while tokens[idx].kind != lexer::Token::RightBrace {
-            let (key_expr, key_incr) = parse_expression(&tokens[idx..]);
-            match key_expr {
-                Err(key_expr) => return (Err(key_expr), 0),
+                    // parse_atom should not consume trailing Separators, but
+                    // parse_function_literal does because it ends with expressions.
+                    // so we backtrack one token.
+                    return (Ok(atom), idx);
+                }
                 _ => {}
             }
 
-            idx += key_incr;
-            err = guard_unexpected_input_end(tokens, idx);
-            match err {
-                Err(err) => return (Err(err), 0),
-                _ => {}
-            }
+            return (
+                Ok(EmptyIdentifierNode {
+                    position: tok.position,
+                }),
+                idx,
+            );
+        }
+        // GoInk: may be called as a function, so flows beyond
+        // switch block
+        lexer::Token::LeftParen => {}
+        lexer::Token::LeftBrace => {
+            let mut entries: Vec<ObjectEntryNode> = Vec::new();
 
-            if tokens[idx].kind == lexer::Token::KeyValueSeparator {
-                idx += 1;
-            } else {
-                return (
-                    Err(error::Err {
-                        reason: error::ERR_SYNTAX,
-                        message: format!(
-                            "expected {:?} after composite key, found {:?}",
-                            lexer::Token::KeyValueSeparator,
-                            tokens[idx]
-                        ),
-                    }),
-                    0,
-                );
-            }
+            while tokens[idx].kind != lexer::Token::RightBrace {
+                let (key_expr, key_incr) = parse_expression(&tokens[idx..]);
+                match key_expr {
+                    Err(key_expr) => return (Err(key_expr), 0),
+                    _ => {}
+                }
 
-            err = guard_unexpected_input_end(tokens, idx);
-            match err {
-                Err(err) => return (Err(err), 0),
-                _ => {}
-            }
+                idx += key_incr;
+                err = guard_unexpected_input_end(tokens, idx);
+                match err {
+                    Err(err) => return (Err(err), 0),
+                    _ => {}
+                }
 
-            let (val_expr, val_incr) = parse_expression(&tokens[idx..]);
-            match val_expr {
-                Err(val_expr) => return (Err(val_expr), 0),
-                Ok(val_expr) => {
-                    // GoInk (edited): Separator consumed by parse_expression
-                    idx += val_incr;
+                if tokens[idx].kind == lexer::Token::KeyValueSeparator {
+                    idx += 1;
+                } else {
+                    return (
+                        Err(error::Err {
+                            reason: error::ERR_SYNTAX,
+                            message: format!(
+                                "expected {:?} after composite key, found {:?}",
+                                lexer::Token::KeyValueSeparator,
+                                tokens[idx]
+                            ),
+                        }),
+                        0,
+                    );
+                }
 
-                    // TODO: there must be a shorthand for this?
-                    let key_expr = key_expr.unwrap();
-                    let position = key_expr.position();
-                    entries.push(ObjectEntryNode {
-                        key: key_expr,
-                        val: val_expr,
-                        position: position,
-                    });
+                err = guard_unexpected_input_end(tokens, idx);
+                match err {
+                    Err(err) => return (Err(err), 0),
+                    _ => {}
+                }
+
+                let (val_expr, val_incr) = parse_expression(&tokens[idx..]);
+                match val_expr {
+                    Err(val_expr) => return (Err(val_expr), 0),
+                    Ok(val_expr) => {
+                        // GoInk (edited): Separator consumed by parse_expression
+                        idx += val_incr;
+
+                        // TODO: there must be a shorthand for this?
+                        let key_expr = key_expr.unwrap();
+                        let position = key_expr.position();
+                        entries.push(ObjectEntryNode {
+                            key: key_expr,
+                            val: val_expr,
+                            position: position,
+                        });
+                    }
+                }
+
+                err = guard_unexpected_input_end(tokens, idx);
+                match err {
+                    Err(err) => return (Err(err), 0),
+                    _ => {}
                 }
             }
+            idx += 1; // GoInk: RightBrace
 
-            err = guard_unexpected_input_end(tokens, idx);
-            match err {
-                Err(err) => return (Err(err), 0),
-                _ => {}
-            }
+            return (
+                Ok(Box::new(ObjectLiteralNode {
+                    entries: entries,
+                    position: tok.position,
+                })),
+                idx,
+            );
         }
-        idx += 1; // GoInk: RightBrace
+        lexer::Token::LeftBracket => {
+            let mut vals: Vec<Box<Node>> = Vec::new();
 
-        return (
-            Ok(Box::new(ObjectLiteralNode {
-                entries: entries,
-                position: tok.position,
-            })),
-            idx,
-        );
-    } else if tok.kind == lexer::Token::LeftBracket {
-        let mut vals: Vec<Box<Node>> = Vec::new();
+            while tokens[idx].kind != lexer::Token::RightBracket {
+                let (expr, incr) = parse_expression(&tokens[idx..]);
+                match expr {
+                    Err(expr) => return (Err(expr), 0),
+                    Ok(expr) => {
+                        idx += incr;
+                        vals.push(expr);
+                    }
+                }
 
-        while tokens[idx].kind != lexer::Token::RightBracket {
-            let (expr, incr) = parse_expression(&tokens[idx..]);
-            match expr {
-                Err(expr) => return (Err(expr), 0),
-                Ok(expr) => {
-                    idx += incr;
-                    vals.push(expr);
+                let err = guard_unexpected_input_end(tokens, idx);
+                match err {
+                    Err(err) => return (Err(err), 0),
+                    _ => {}
                 }
             }
+            idx += 1; // GoInk: RightBracket
 
-            let err = guard_unexpected_input_end(tokens, idx);
-            match err {
-                Err(err) => return (Err(err), 0),
-                _ => {}
-            }
+            return (
+                Ok(Box::new(ListLiteralNode {
+                    vals: vals,
+                    position: tok.position,
+                })),
+                idx,
+            );
         }
-        idx += 1; // GoInk: RightBracket
-
-        return (
-            Ok(Box::new(ListLiteralNode {
-                vals: vals,
-                position: tok.position,
-            })),
-            idx,
-        );
-    } else {
-        return (
-            Err(error::Err {
-                reason: error::ERR_SYNTAX,
-                message: format!("unexpected start of atom, found {:?}", tok),
-            }),
-            0,
-        );
-    }
+        _ => {
+            return (
+                Err(error::Err {
+                    reason: error::ERR_SYNTAX,
+                    message: format!("unexpected start of atom, found {:?}", tok),
+                }),
+                0,
+            );
+        }
+    };
 
     // GoInk (edited): bounds check here because parse_expression may have consumed all tokens before this
     while idx < tokens.len() && tokens[idx].kind == lexer::Token::LeftParen {
