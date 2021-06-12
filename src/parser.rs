@@ -339,14 +339,14 @@ fn parse_binary_expression(
     //     0,
     // ));
 
-    let (right_atom, idx) = parse_atom(&tokens);
+    let (right_atom, mut idx) = parse_atom(&tokens);
     match right_atom {
         Err(right_atom) => return (Err(right_atom), 0),
         _ => {}
     }
     let mut incr = 0;
 
-    let mut ops: Vec<lexer::Tok> = Vec::new();
+    let mut ops: Vec<&lexer::Tok> = Vec::new();
     let mut nodes: Vec<Box<Node>> = Vec::new();
     ops.push(operator);
     nodes.push(left_operand);
@@ -362,7 +362,7 @@ fn parse_binary_expression(
         } else if get_op_priority(ops.last().unwrap()) >= get_op_priority(&tokens[idx]) {
             // GoInk: Priority is lower than the previous op (but higher than parent),
             // so it's ok to be left-heavy in this tree
-            ops.push(tokens[idx]);
+            ops.push(&tokens[idx]);
             idx += 1;
 
             let err = guard_unexpected_input_end(&tokens, idx);
@@ -405,7 +405,7 @@ fn parse_binary_expression(
     }
 
     // GoInk: ops, nodes -> left-biased binary expression tree
-    let tree = nodes[0];
+    let mut tree = nodes[0];
     nodes.drain(0..1);
     while ops.len() > 0 {
         tree = Box::new(BinaryExprNode {
@@ -424,9 +424,8 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, us
     let mut idx = 0;
 
     let mut consume_dangling_separator = || {
-        // GoInk: bounds check in case parseExpress() called at some point
+        // GoInk: bounds check in case parse_expression called at some point
         // consumed end token
-
         if idx < tokens.len() && tokens[idx].kind == lexer::Token::Separator {
             idx += 1;
         }
@@ -501,10 +500,7 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, us
             }
 
             consume_dangling_separator();
-            return (
-                Ok(bin_expr.unwrap()),
-                idx,
-            );
+            return (Ok(bin_expr.unwrap()), idx);
         }
         lexer::Token::MatchColon => {
             let (clauses, incr) = parse_match_body(&tokens[idx..]);
@@ -934,14 +930,17 @@ fn parse_match_clause(tokens: &[lexer::Tok]) -> (Result<Box<MatchClauseNode>, er
     }
 
     if tokens[idx].kind != lexer::Token::CaseArrow {
-        return (Err(error::Err {
-            reason: error::ERR_SYNTAX,
-            message: format!(
-                "expected {:?}, but got {:?}",
-                lexer::Token::CaseArrow,
-                tokens[idx]
-            ),
-        }), 0);
+        return (
+            Err(error::Err {
+                reason: error::ERR_SYNTAX,
+                message: format!(
+                    "expected {:?}, but got {:?}",
+                    lexer::Token::CaseArrow,
+                    tokens[idx]
+                ),
+            }),
+            0,
+        );
     }
     idx += 1; // CaseArrow
 
