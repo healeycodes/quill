@@ -399,21 +399,23 @@ fn parse_binary_expression(
                 _ => {}
             }
 
-            nodes[nodes.len() - 1] = subtree.unwrap();
+            let _last = nodes.len() - 1;
+            nodes[_last] = subtree.unwrap();
             idx += incr + 1;
         }
     }
 
     // GoInk: ops, nodes -> left-biased binary expression tree
-    let mut tree = nodes[0];
+    let mut tree: Box<Node> = nodes[0];
     nodes.drain(0..1);
     while ops.len() > 0 {
         tree = Box::new(BinaryExprNode {
             operator: ops[0].kind,
-            left_operand: tree,
+            left_operand: Box::new(*tree),
             right_operand: nodes[0],
             position: ops[0].position,
         });
+        ops.drain(0..1);
         nodes.drain(0..1);
     }
 
@@ -423,7 +425,7 @@ fn parse_binary_expression(
 fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
     let mut idx = 0;
 
-    let mut consume_dangling_separator = || {
+    let consume_dangling_separator = |mut idx: usize| {
         // GoInk: bounds check in case parse_expression called at some point
         // consumed end token
         if idx < tokens.len() && tokens[idx].kind == lexer::Token::Separator {
@@ -488,7 +490,7 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, us
                 }
                 idx += incr;
 
-                consume_dangling_separator();
+                consume_dangling_separator(idx);
                 return (
                     Ok(Box::new(MatchExprNode {
                         condition: bin_expr.unwrap(),
@@ -499,7 +501,7 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, us
                 );
             }
 
-            consume_dangling_separator();
+            consume_dangling_separator(idx);
             return (Ok(bin_expr.unwrap()), idx);
         }
         lexer::Token::MatchColon => {
@@ -509,7 +511,7 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, us
                 _ => {}
             }
 
-            consume_dangling_separator();
+            consume_dangling_separator(idx);
             return (
                 Ok(Box::new(MatchExprNode {
                     condition: atom.unwrap(),
