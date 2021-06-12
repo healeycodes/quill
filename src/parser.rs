@@ -245,7 +245,7 @@ fn guard_unexpected_input_end(tokens: &[lexer::Tok], idx: usize) -> Result<(), e
     return Ok(());
 }
 
-// GoInk(edited): Parse transforms a list of Tok (tokens) to Node (AST nodes).
+// GoInk: Parse transforms a list of Tok (tokens) to Node (AST nodes).
 // This implementation uses recursive descent parsing.
 pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) -> Vec<&Node> {
     let mut nodes: Vec<&Node> = Vec::new();
@@ -325,18 +325,191 @@ fn is_binary_op(t: lexer::Tok) -> bool {
 fn parse_binary_expression(
     left_operand: Box<Node>,
     operator: lexer::Tok,
-    tokens: &Vec<lexer::Tok>,
-) -> Result<(Box<Node>, usize), error::Err> {
-    return Ok((
-        Box::new(EmptyIdentifierNode {
-            position: lexer::Position { line: 1, col: 1 },
-        }),
-        0,
-    ));
-    // let (right_atom, idx) = parse_atom(&tokens);
+    tokens: &[lexer::Tok],
+    previous_priority: isize,
+) -> (Result<Box<Node>, error::Err>, usize) {
+    // return Ok((
+    //     Box::new(EmptyIdentifierNode {
+    //         position: lexer::Position { line: 1, col: 1 },
+    //     }),
+    //     0,
+    // ));
+
+    let (right_atom, idx) = parse_atom(&tokens);
+    match atom {
+        Err(atom) => return (Err(atom), 0),
+        _ => {}
+    }
+    let mut incr = 0;
+
+    let mut ops: Vec<lexer::Tok> = Vec::new();
+    let mut nodes: Vec<Node> = Vec::new();
+    ops.push(operator);
+    nodes.push(left_operand);
+    nodes.push(right_atom);
+
+    // GoInk: build up a list of binary operations, with tree nodes
+    // where there are higher-priority binary ops
+    while tokens.len() > idx && is_binary_op(tokens[idx]) {
+        if previous_priority >= get_op_priority(tokens[idx]) {
+            // GoInk: Priority is lower than the calling function's last op,
+            //  so return control to the parent binary op
+            break;
+        } else if get_op_priority(ops.last()) >= get_op_priority(tokens[idx]) {
+            // GoInk: Priority is lower than the previous op (but higher than parent),
+            // so it's ok to be left-heavy in this tree
+            ops.push(tokens);
+            idx += 1;
+
+            err = guard_unexpected_input_end(tokens, idx);
+            match err {
+                Err(err) => return (Err(err), 0),
+                _ => {}
+            }
+
+            let (right_atom, incr) = parse_atom(&tokens[idx..]);
+            match atom {
+                Err(atom) => return (Err(atom), 0),
+                _ => {}
+            }
+
+            nodes.push(right_atom.unwrap());
+            idx += incr;
+        } else {
+            err = guard_unexpected_input_end(tokens, idx);
+            match err {
+                Err(err) => return (Err(err), 0),
+                _ => {}
+            }
+
+            // GoInk: Priority is higher than previous ops,
+            // so make it a right-heavy tree
+            let (subtree, incr) = parse_binary_expression(
+                nodes.last(),
+                tokens[idx],
+                tokens[idx + 1..],
+                get_op_priority(ops.last()),
+            );
+            match subtree {
+                Err(subtree) => return (Err(subtree), 0),
+                _ => {}
+            }
+
+            nodes[nodes.len() - 1] = subtree;
+            idx += incr + 1;
+        }
+    }
+
+    // GoInk: ops, nodes -> left-biased binary expression tree
+    let tree = nodes[0];
+    nodes = nodes[1..];
+    while ops.len() > 0 {
+        tree = BinaryExprNode {
+            operator: ops[0].kind,
+            left_operand: tree,
+            right_operand: nodes[0],
+            position: ops[0].position,
+        };
+        ops = ops[1..];
+        nodes = nodes[1..];
+    }
+
+    return (Ok(Box::new(tree)), idx);
 }
 
 fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
+    let mut idx = 0;
+
+    let consume_dangling_separator = || {
+        // GoInk: bounds check in case parseExpress() called at some point
+        // consumed end token
+
+        if idx < tokens.len() && tokens[idx].kind == lexer::Token::Separator {
+            idx += 1;
+        }
+    };
+
+    let (atom, incr) = parse_atom(&tokens[idx..]);
+    match atom {
+        Err(atom) => return (Err(atom), 0),
+        _ => {}
+    }
+    idx += incr;
+
+    err = guard_unexpected_input_end(tokens, idx);
+    match err {
+        Err(err) => return (Err(err), 0),
+        _ => {}
+    }
+
+    let next_tok = tokens[idx];
+    idx += 1;
+
+    match next_tok.kind {
+        // GoInk: consuming dangling separator
+        lexer::Token::Separator => return (Ok(atom.unwrap()), idx),
+        // GoInk:these belong to the parent atom that contains this expression,
+        // so return without consuming token (idx - 1)
+        lexer::Token::RightParen | lexer::Token::KeyValueSeparator | lexer::Token::CaseArrow => {
+            return (Ok(atom.unwrap()), idx - 1)
+        }
+        lexer::Token::AddOp
+        | lexer::Token::SubtractOp
+        | lexer::Token::MultiplyOp
+        | lexer::Token::DivideOp
+        | lexer::Token::ModulusOp
+        | lexer::Token::LogicalAndOp
+        | lexer::Token::LogicalOrOp
+        | lexer::Token::LogicalXorOp
+        | lexer::Token::GreaterThanOp
+        | lexer::Token::LessThanOp
+        | lexer::Token::EqualOp
+        | lexer::Token::DefineOp
+        | lexer::Token::AccessorOp => {
+            let (bin_expr, incr) =
+                parse_binary_expression(atom.unwrap(), next_tok, &tokens[idx..], -1);
+            match bin_expr {
+                Err(bin_expr) => return (Err(bin_expr), 0),
+                _ => {}
+            }
+            idx += incr;
+
+            // GoInk: Binary expressions are often followed by a match
+            if idx < tokens.len() && tokens[idx].kind == lexer::Token::MatchColon {
+                let colon_pos = tokens[idx].position;
+                idx += 1; // GoInk: MatchColon
+
+                let (clauses, incr) = parse_match_body(tokens[idx..]);
+                match clauses {
+                    Err(clauses) => return (Err(clauses), 0),
+                    _ => {}
+                }
+                idx += incr;
+
+                consume_dangling_separator();
+
+                return (
+                    Ok(Box::new(MatchExprNode {
+                        condition: bin_expr.unwrap(),
+                        clauses: clauses.unwrap(),
+                        position: colon_pos,
+                    })),
+                    idx,
+                );
+            }
+
+            consume_dangling_separator();
+            return (
+                Ok(Box::new(MatchExprNode {
+                    condition: bin_expr.unwrap(),
+                    clauses: clauses.unwrap(),
+                    position: colon_pos,
+                })),
+                idx,
+            );
+        }
+    }
+
     let null_node = UnaryExprNode {
         operator: lexer::Kind::AccessorOp,
         operand: Box::new(EmptyIdentifierNode {
@@ -433,7 +606,7 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
                         Err(_atom) => return (Err(_atom), 0),
                         _ => atom = _atom.unwrap(),
                     }
-                    // GoInk (edited): parse_atom should not consume trailing Separators, but
+                    // GoInk : parse_atom should not consume trailing Separators, but
                     // parseFunctionLiteral does because it ends with expressions.
                     // so we backtrack one token.
                     idx -= 1
@@ -450,16 +623,16 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
         lexer::Token::EmptyIdentifier => {
             match tokens[idx].kind {
                 lexer::Token::FunctionArrow => {
-                    let (_atom, _idx) = parse_function_literal(&tokens);
-                    match _atom {
-                        Err(_atom) => return (Err(_atom), 0),
-                        _ => atom = _atom.unwrap(),
+                    let parsed_function_literal = parse_function_literal(&tokens);
+                    match parsed_function_literal {
+                        (Err(atom), _) => return (Err(atom), 0),
+                        (Ok(_atom), _idx) => {
+                            // parse_atom should not consume trailing Separators, but
+                            // parse_function_literal does because it ends with expressions.
+                            // so we backtrack one token.
+                            return (Ok(_atom), _idx - 1);
+                        }
                     }
-
-                    // parse_atom should not consume trailing Separators, but
-                    // parse_function_literal does because it ends with expressions.
-                    // so we backtrack one token.
-                    return (Ok(atom), idx);
                 }
                 _ => {}
             }
@@ -563,7 +736,7 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
                 match val_expr {
                     Err(val_expr) => return (Err(val_expr), 0),
                     Ok(val_expr) => {
-                        // GoInk (edited): Separator consumed by parse_expression
+                        // GoInk : Separator consumed by parse_expression
                         idx += val_incr;
 
                         // TODO: there must be a shorthand for this?
@@ -633,7 +806,7 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
         }
     };
 
-    // GoInk (edited): bounds check here because parse_expression may have consumed all tokens before this
+    // GoInk : bounds check here because parse_expression may have consumed all tokens before this
     while idx < tokens.len() && tokens[idx].kind == lexer::Token::LeftParen {
         let incr: usize;
         match parse_function_call(atom, &tokens[idx..]) {
