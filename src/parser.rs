@@ -406,12 +406,12 @@ fn parse_binary_expression(
     }
 
     // GoInk: ops, nodes -> left-biased binary expression tree
-    let mut tree: Box<Node> = nodes[0];
+    let mut tree = nodes[0];
     nodes.drain(0..1);
     while ops.len() > 0 {
         tree = Box::new(BinaryExprNode {
             operator: ops[0].kind,
-            left_operand: Box::new(*tree),
+            left_operand: tree,
             right_operand: nodes[0],
             position: ops[0].position,
         });
