@@ -48,6 +48,11 @@ impl fmt::Display for FunctionCallNode {
         );
     }
 }
+impl Node for FunctionCallNode {
+    fn position(&self) -> lexer::Position {
+        return self.function.position();
+    }
+}
 
 struct MatchClauseNode {
     target: Box<Node>,
@@ -58,10 +63,15 @@ impl fmt::Display for MatchClauseNode {
         return write!(f, "Clause ({}) -> ({})", self.target, self.expression);
     }
 }
+impl Node for MatchClauseNode {
+    fn position(&self) -> lexer::Position {
+        return self.target.position();
+    }
+}
 
 struct MatchExprNode {
     condition: Box<Node>,
-    clauses: Vec<MatchClauseNode>,
+    clauses: Vec<Box<MatchClauseNode>>,
     position: lexer::Position,
 }
 impl fmt::Display for MatchExprNode {
@@ -218,12 +228,6 @@ impl_node!(
     FunctionLiteralNode
 );
 
-impl Node for FunctionCallNode {
-    fn position(&self) -> lexer::Position {
-        return self.function.position();
-    }
-}
-
 fn guard_unexpected_input_end(tokens: &[lexer::Tok], idx: usize) -> Result<(), error::Err> {
     if idx >= tokens.len() {
         if tokens.len() > 0 {
@@ -287,7 +291,7 @@ pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) ->
     return nodes;
 }
 
-fn get_op_priority(t: lexer::Tok) -> isize {
+fn get_op_priority(t: &lexer::Tok) -> isize {
     // GoInk: higher == greater priority
     match t.kind {
         lexer::Token::AccessorOp => 100,
@@ -303,7 +307,7 @@ fn get_op_priority(t: lexer::Tok) -> isize {
     }
 }
 
-fn is_binary_op(t: lexer::Tok) -> bool {
+fn is_binary_op(t: &lexer::Tok) -> bool {
     match t.kind {
         lexer::Token::AddOp
         | lexer::Token::SubtractOp
@@ -324,7 +328,7 @@ fn is_binary_op(t: lexer::Tok) -> bool {
 
 fn parse_binary_expression(
     left_operand: Box<Node>,
-    operator: lexer::Tok,
+    operator: &lexer::Tok,
     tokens: &[lexer::Tok],
     previous_priority: isize,
 ) -> (Result<Box<Node>, error::Err>, usize) {
@@ -336,47 +340,47 @@ fn parse_binary_expression(
     // ));
 
     let (right_atom, idx) = parse_atom(&tokens);
-    match atom {
-        Err(atom) => return (Err(atom), 0),
+    match right_atom {
+        Err(right_atom) => return (Err(right_atom), 0),
         _ => {}
     }
     let mut incr = 0;
 
     let mut ops: Vec<lexer::Tok> = Vec::new();
-    let mut nodes: Vec<Node> = Vec::new();
+    let mut nodes: Vec<Box<Node>> = Vec::new();
     ops.push(operator);
     nodes.push(left_operand);
-    nodes.push(right_atom);
+    nodes.push(right_atom.unwrap());
 
     // GoInk: build up a list of binary operations, with tree nodes
     // where there are higher-priority binary ops
-    while tokens.len() > idx && is_binary_op(tokens[idx]) {
-        if previous_priority >= get_op_priority(tokens[idx]) {
+    while tokens.len() > idx && is_binary_op(&tokens[idx]) {
+        if previous_priority >= get_op_priority(&tokens[idx]) {
             // GoInk: Priority is lower than the calling function's last op,
             //  so return control to the parent binary op
             break;
-        } else if get_op_priority(ops.last()) >= get_op_priority(tokens[idx]) {
+        } else if get_op_priority(ops.last().unwrap()) >= get_op_priority(&tokens[idx]) {
             // GoInk: Priority is lower than the previous op (but higher than parent),
             // so it's ok to be left-heavy in this tree
-            ops.push(tokens);
+            ops.push(tokens[idx]);
             idx += 1;
 
-            err = guard_unexpected_input_end(tokens, idx);
+            let err = guard_unexpected_input_end(&tokens, idx);
             match err {
                 Err(err) => return (Err(err), 0),
                 _ => {}
             }
 
             let (right_atom, incr) = parse_atom(&tokens[idx..]);
-            match atom {
-                Err(atom) => return (Err(atom), 0),
+            match right_atom {
+                Err(right_atom) => return (Err(right_atom), 0),
                 _ => {}
             }
 
             nodes.push(right_atom.unwrap());
             idx += incr;
         } else {
-            err = guard_unexpected_input_end(tokens, idx);
+            let err = guard_unexpected_input_end(tokens, idx);
             match err {
                 Err(err) => return (Err(err), 0),
                 _ => {}
@@ -385,42 +389,41 @@ fn parse_binary_expression(
             // GoInk: Priority is higher than previous ops,
             // so make it a right-heavy tree
             let (subtree, incr) = parse_binary_expression(
-                nodes.last(),
-                tokens[idx],
-                tokens[idx + 1..],
-                get_op_priority(ops.last()),
+                *nodes.last().unwrap(),
+                &tokens[idx],
+                &tokens[idx + 1..],
+                get_op_priority(ops.last().unwrap()),
             );
             match subtree {
                 Err(subtree) => return (Err(subtree), 0),
                 _ => {}
             }
 
-            nodes[nodes.len() - 1] = subtree;
+            nodes[nodes.len() - 1] = subtree.unwrap();
             idx += incr + 1;
         }
     }
 
     // GoInk: ops, nodes -> left-biased binary expression tree
     let tree = nodes[0];
-    nodes = nodes[1..];
+    nodes.drain(0..1);
     while ops.len() > 0 {
-        tree = BinaryExprNode {
+        tree = Box::new(BinaryExprNode {
             operator: ops[0].kind,
             left_operand: tree,
             right_operand: nodes[0],
             position: ops[0].position,
-        };
-        ops = ops[1..];
-        nodes = nodes[1..];
+        });
+        nodes.drain(0..1);
     }
 
-    return (Ok(Box::new(tree)), idx);
+    return (Ok(tree), idx);
 }
 
 fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
     let mut idx = 0;
 
-    let consume_dangling_separator = || {
+    let mut consume_dangling_separator = || {
         // GoInk: bounds check in case parseExpress() called at some point
         // consumed end token
 
@@ -436,13 +439,13 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, us
     }
     idx += incr;
 
-    err = guard_unexpected_input_end(tokens, idx);
+    let err = guard_unexpected_input_end(tokens, idx);
     match err {
         Err(err) => return (Err(err), 0),
         _ => {}
     }
 
-    let next_tok = tokens[idx];
+    let next_tok = &tokens[idx];
     idx += 1;
 
     match next_tok.kind {
@@ -479,7 +482,7 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, us
                 let colon_pos = tokens[idx].position;
                 idx += 1; // GoInk: MatchColon
 
-                let (clauses, incr) = parse_match_body(tokens[idx..]);
+                let (clauses, incr) = parse_match_body(&tokens[idx..]);
                 match clauses {
                     Err(clauses) => return (Err(clauses), 0),
                     _ => {}
@@ -487,7 +490,6 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, us
                 idx += incr;
 
                 consume_dangling_separator();
-
                 return (
                     Ok(Box::new(MatchExprNode {
                         condition: bin_expr.unwrap(),
@@ -500,32 +502,37 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, us
 
             consume_dangling_separator();
             return (
+                Ok(bin_expr.unwrap()),
+                idx,
+            );
+        }
+        lexer::Token::MatchColon => {
+            let (clauses, incr) = parse_match_body(&tokens[idx..]);
+            match clauses {
+                Err(clauses) => return (Err(clauses), 0),
+                _ => {}
+            }
+
+            consume_dangling_separator();
+            return (
                 Ok(Box::new(MatchExprNode {
-                    condition: bin_expr.unwrap(),
+                    condition: atom.unwrap(),
                     clauses: clauses.unwrap(),
-                    position: colon_pos,
+                    position: next_tok.position,
                 })),
                 idx,
             );
         }
+        _ => {
+            return (
+                Err(error::Err {
+                    message: format!("unexpected token {:?} following an expression", next_tok),
+                    reason: error::ERR_SYNTAX,
+                }),
+                0,
+            )
+        }
     }
-
-    let null_node = UnaryExprNode {
-        operator: lexer::Kind::AccessorOp,
-        operand: Box::new(EmptyIdentifierNode {
-            position: lexer::Position { line: 1, col: 1 },
-        }),
-        position: lexer::Position { line: 1, col: 1 },
-    };
-    return (Ok(Box::new(null_node)), 0);
-    // return (
-    //     null_node,
-    //     0,
-    //     Err(error::Err {
-    //         message: String::new(),
-    //         reason: -1,
-    //     }),
-    // );
 }
 
 fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
@@ -826,6 +833,138 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
     }
 
     return (Ok(atom), idx);
+}
+
+// GoInk: parses everything that follows MatchColon
+// does not consume dangling separator -- that's for parse_expression
+fn parse_match_body(
+    tokens: &[lexer::Tok],
+) -> (Result<Vec<Box<MatchClauseNode>>, error::Err>, usize) {
+    let mut idx = 1; // GoInk: LeftBrace
+    let mut clauses: Vec<Box<MatchClauseNode>> = Vec::new();
+
+    let err = guard_unexpected_input_end(tokens, idx);
+    match err {
+        Err(err) => return (Err(err), 0),
+        _ => {}
+    }
+
+    while tokens[idx].kind != lexer::Token::RightBrace {
+        let (clause_node, incr) = parse_match_clause(&tokens[idx..]);
+        match clause_node {
+            Err(clause_node) => return (Err(clause_node), 0),
+            _ => {}
+        }
+        idx += incr;
+
+        clauses.push(clause_node.unwrap());
+
+        let err = guard_unexpected_input_end(tokens, idx);
+        match err {
+            Err(err) => return (Err(err), 0),
+            _ => {}
+        }
+    }
+    idx += 1; // GoInk: RightBrace
+
+    return (Ok(clauses), idx);
+}
+
+fn parse_match_call(tokens: &[lexer::Tok]) -> (Result<Box<MatchClauseNode>, error::Err>, usize) {
+    let (atom, mut idx) = parse_expression(&tokens);
+    match atom {
+        Err(atom) => return (Err(atom), 0),
+        _ => {}
+    }
+
+    let err = guard_unexpected_input_end(tokens, idx);
+    match err {
+        Err(err) => return (Err(err), 0),
+        _ => {}
+    }
+
+    if tokens[idx].kind != lexer::Token::CaseArrow {
+        return (
+            Err(error::Err {
+                reason: error::ERR_SYNTAX,
+                message: format!(
+                    "expected {:?}, but got {:?}",
+                    lexer::Token::CaseArrow,
+                    tokens[idx]
+                ),
+            }),
+            0,
+        );
+    }
+    idx += 1; // GoInk: CaseArrow
+
+    let err = guard_unexpected_input_end(tokens, idx);
+    match err {
+        Err(err) => return (Err(err), 0),
+        _ => {}
+    }
+
+    let (expr, incr) = parse_expression(&tokens[idx..]);
+    match expr {
+        Err(expr) => return (Err(expr), 0),
+        _ => {}
+    }
+    idx += incr;
+
+    return (
+        Ok(Box::new(MatchClauseNode {
+            target: atom.unwrap(),
+            expression: expr.unwrap(),
+        })),
+        idx,
+    );
+}
+
+fn parse_match_clause(tokens: &[lexer::Tok]) -> (Result<Box<MatchClauseNode>, error::Err>, usize) {
+    let (atom, mut idx) = parse_expression(&tokens);
+    match atom {
+        Err(atom) => return (Err(atom), 0),
+        _ => {}
+    }
+
+    let err = guard_unexpected_input_end(tokens, idx);
+    match err {
+        Err(err) => return (Err(err), 0),
+        _ => {}
+    }
+
+    if tokens[idx].kind != lexer::Token::CaseArrow {
+        return (Err(error::Err {
+            reason: error::ERR_SYNTAX,
+            message: format!(
+                "expected {:?}, but got {:?}",
+                lexer::Token::CaseArrow,
+                tokens[idx]
+            ),
+        }), 0);
+    }
+    idx += 1; // CaseArrow
+
+    let err = guard_unexpected_input_end(tokens, idx);
+    match err {
+        Err(err) => return (Err(err), 0),
+        _ => {}
+    }
+
+    let (expr, incr) = parse_expression(&tokens[idx..]);
+    match expr {
+        Err(expr) => return (Err(expr), 0),
+        _ => {}
+    }
+    idx += incr;
+
+    return (
+        Ok(Box::new(MatchClauseNode {
+            target: atom.unwrap(),
+            expression: expr.unwrap(),
+        })),
+        idx,
+    );
 }
 
 fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {

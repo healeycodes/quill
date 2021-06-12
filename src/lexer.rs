@@ -268,7 +268,7 @@ fn match_new_line(s: &str) -> bool {
 
 pub fn tokenize(tokens: &mut Vec<Tok>, source: &Vec<&str>, fatal_error: bool, debug_lexer: bool) {
     let lexer_state = &mut LexerState {
-        tokens: &mut Vec::new(),
+        tokens: tokens,
         buf: &mut String::new(),
         last_kind: &mut Token::Separator,
         line_no: 1,
