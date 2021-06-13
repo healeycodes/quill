@@ -3,217 +3,175 @@ use crate::lexer;
 use crate::log;
 use std::fmt;
 
-struct UnaryExprNode {
-    operator: lexer::Kind,
-    operand: Box<Node>,
-    position: lexer::Position,
-}
-impl fmt::Display for UnaryExprNode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        return write!(f, "Unary {:?} ({})", self.operator, self.operand);
-    }
-}
-
-struct BinaryExprNode {
-    operator: lexer::Kind,
-    left_operand: Box<Node>,
-    right_operand: Box<Node>,
-    position: lexer::Position,
-}
-impl fmt::Display for BinaryExprNode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        return write!(
-            f,
-            "Binary ({}) {:?} ({})",
-            self.left_operand, self.operator, self.right_operand
-        );
-    }
-}
-
-struct FunctionCallNode {
-    function: Box<Node>,
-    arguments: Vec<Box<Node>>,
-}
-impl fmt::Display for FunctionCallNode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        return write!(
-            f,
-            "Call ({}) on ({})",
-            self.function,
-            (*self.arguments)
-                .into_iter()
-                .map(|arg| arg.to_string())
-                .collect::<Vec<String>>()
-                .join(", ")
-        );
-    }
-}
-impl Node for FunctionCallNode {
-    fn position(&self) -> lexer::Position {
-        return self.function.position();
-    }
-}
-
-struct MatchClauseNode {
-    target: Box<Node>,
-    expression: Box<Node>,
-}
-impl fmt::Display for MatchClauseNode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        return write!(f, "Clause ({}) -> ({})", self.target, self.expression);
-    }
-}
-impl Node for MatchClauseNode {
-    fn position(&self) -> lexer::Position {
-        return self.target.position();
-    }
-}
-
-struct MatchExprNode {
-    condition: Box<Node>,
-    clauses: Vec<Box<MatchClauseNode>>,
-    position: lexer::Position,
-}
-impl fmt::Display for MatchExprNode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        return write!(
-            f,
-            "Match on ({}) to {{{}}}",
-            self.condition,
-            (*self.clauses)
-                .into_iter()
-                .map(|clause| clause.to_string())
-                .collect::<Vec<String>>()
-                .join(", ")
-        );
-    }
+#[derive(Debug, Clone)]
+pub enum Node {
+    UnaryExprNode {
+        operator: lexer::Kind,
+        operand: Box<Node>,
+        position: lexer::Position,
+    },
+    BinaryExprNode {
+        operator: lexer::Kind,
+        left_operand: Box<Node>,
+        right_operand: Box<Node>,
+        position: lexer::Position,
+    },
+    FunctionCallNode {
+        function: Box<Node>,
+        arguments: Vec<Box<Node>>,
+    },
+    MatchClauseNode {
+        target: Box<Node>,
+        expression: Box<Node>,
+    },
+    MatchExprNode {
+        condition: Box<Node>,
+        clauses: Vec<Box<MatchClauseNode>>,
+        position: lexer::Position,
+    },
+    ExpressionListNode {
+        expressions: Vec<Box<Node>>,
+        position: lexer::Position,
+    },
+    EmptyIdentifierNode {
+        position: lexer::Position,
+    },
+    IdentifierNode {
+        val: String,
+        position: lexer::Position,
+    },
+    NumberLiteralNode {
+        val: f64,
+        position: lexer::Position,
+    },
+    StringLiteralNode {
+        val: String,
+        position: lexer::Position,
+    },
+    BooleanLiteralNode {
+        val: bool,
+        position: lexer::Position,
+    },
+    ObjectLiteralNode {
+        entries: Vec<ObjectEntryNode>,
+        position: lexer::Position,
+    },
+    ObjectEntryNode {
+        key: Box<Node>,
+        val: Box<Node>,
+        position: lexer::Position,
+    },
+    ListLiteralNode {
+        vals: Vec<Box<Node>>,
+        position: lexer::Position,
+    },
+    FunctionLiteralNode {
+        arguments: Vec<Box<Node>>,
+        body: Box<Node>,
+        position: lexer::Position,
+    },
 }
 
-struct ExpressionListNode {
-    expressions: Vec<Box<Node>>,
-    position: lexer::Position,
-}
-impl fmt::Display for ExpressionListNode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        return write!(
-            f,
-            "Expression List ({})",
-            (*self.expressions)
-                .into_iter()
-                .map(|expr| expr.to_string())
-                .collect::<Vec<String>>()
-                .join(", ")
-        );
-    }
-}
-
-struct EmptyIdentifierNode {
-    position: lexer::Position,
-}
-impl fmt::Display for EmptyIdentifierNode {
+impl fmt::Display for Node::FunctionLiteralNode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         return write!(f, "");
     }
 }
 
-struct IdentifierNode {
-    val: String,
-    position: lexer::Position,
-}
-impl fmt::Display for IdentifierNode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        return write!(f, "");
-    }
-}
-
-struct NumberLiteralNode {
-    val: f64,
-    position: lexer::Position,
-}
-impl fmt::Display for NumberLiteralNode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        return write!(f, "");
-    }
-}
-
-struct StringLiteralNode {
-    val: String,
-    position: lexer::Position,
-}
-impl fmt::Display for StringLiteralNode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        return write!(f, "");
-    }
-}
-
-struct BooleanLiteralNode {
-    val: bool,
-    position: lexer::Position,
-}
-impl fmt::Display for BooleanLiteralNode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        return write!(f, "");
-    }
-}
-
-struct ObjectLiteralNode {
-    entries: Vec<ObjectEntryNode>,
-    position: lexer::Position,
-}
-impl fmt::Display for ObjectLiteralNode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        return write!(f, "");
-    }
-}
-
-struct ObjectEntryNode {
-    key: Box<Node>,
-    val: Box<Node>,
-    position: lexer::Position,
-}
-impl fmt::Display for ObjectEntryNode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        return write!(f, "");
-    }
-}
-
-struct ListLiteralNode {
-    vals: Vec<Box<Node>>,
-    position: lexer::Position,
-}
-impl fmt::Display for ListLiteralNode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        return write!(f, "");
-    }
-}
-
-struct FunctionLiteralNode {
-    arguments: Vec<Box<Node>>,
-    body: Box<Node>,
-    position: lexer::Position,
-}
-impl fmt::Display for FunctionLiteralNode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        return write!(f, "");
-    }
-}
-
-pub trait Node: fmt::Display {
+pub trait Position: fmt::Display {
     fn position(&self) -> lexer::Position;
 }
 
-macro_rules! impl_node {
-    ($($t:ty),+) => {
-        $(impl Node for $t {
-            fn position(&self) -> lexer::Position {
-                return self.position;
-            }
-        })+
+impl Position for Node {
+    fn position(&self) -> lexer::Position {
+        match self.kind {
+            Node::UnaryExprNode => self.position,
+            Node::MatchClauseNode => self.target.position(),
+            Node::FunctionCallNode => self.function.position(),
+            Node::BinaryExprNode => self.position,
+            Node::MatchExprNode => self.position,
+            Node::ExpressionListNode => self.position,
+            Node::EmptyIdentifierNode => self.position,
+            Node::IdentifierNode => self.position,
+            Node::NumberLiteralNode => self.position,
+            Node::StringLiteralNode => self.position,
+            Node::BooleanLiteralNode => self.position,
+            Node::ObjectLiteralNode => self.position,
+            Node::ObjectEntryNode => self.position,
+            Node::ListLiteralNode => self.position,
+            Node::FunctionLiteralNode => self.position,
+        }
+        return self.position;
     }
 }
 
-impl_node!(
+impl fmt::Display for Node {
+    fn position(&self) -> lexer::Position {
+        match self.kind {
+            Node::UnaryExprNode => {
+                return write!(f, "Unary {:?} ({})", self.operator, self.operand)
+            }
+            Node::MatchClauseNode => {
+                return write!(f, "Clause ({}) -> ({})", self.target, self.expression)
+            }
+            Node::FunctionCallNode => self.function.position(),
+            Node::BinaryExprNode => {
+                return write!(
+                    f,
+                    "Binary ({}) {:?} ({})",
+                    self.left_operand, self.operator, self.right_operand
+                )
+            }
+            Node::MatchExprNode => write!(
+                f,
+                "Match on ({}) to {{{}}}",
+                self.condition,
+                (*self.clauses)
+                    .into_iter()
+                    .map(|clause| clause.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
+            Node::ExpressionListNode => {
+                return write!(
+                    f,
+                    "Expression List ({})",
+                    (*self.expressions)
+                        .into_iter()
+                        .map(|expr| expr.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
+            }
+            Node::EmptyIdentifierNode => return write!(f, ""),
+            Node::IdentifierNode => return write!(f, ""),
+            Node::NumberLiteralNode => return write!(f, ""),
+            Node::StringLiteralNode => return write!(f, ""),
+            Node::BooleanLiteralNode => return write!(f, ""),
+            Node::ObjectLiteralNode => return write!(f, ""),
+            Node::ObjectEntryNode => return write!(f, ""),
+            Node::ListLiteralNode => return write!(f, ""),
+            Node::FunctionLiteralNode => {
+                return write!(
+                    f,
+                    "Function ({}) => ({})",
+                    self.function,
+                    (*self.arguments)
+                        .into_iter()
+                        .map(|arg| arg.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
+            }
+        }
+        return write!(f, "Not implemented")
+    }
+}
+
+impl_position!(
     UnaryExprNode,
+    MatchClauseNode,
+    FunctionCallNode,
     BinaryExprNode,
     MatchExprNode,
     ExpressionListNode,
@@ -222,10 +180,10 @@ impl_node!(
     NumberLiteralNode,
     StringLiteralNode,
     BooleanLiteralNode,
-    ObjectEntryNode,
     ObjectLiteralNode,
+    ObjectEntryNode,
     ListLiteralNode,
-    FunctionLiteralNode
+    FunctionLiteralNode,
 );
 
 fn guard_unexpected_input_end(tokens: &[lexer::Tok], idx: usize) -> Result<(), error::Err> {
