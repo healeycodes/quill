@@ -18,7 +18,7 @@ pub enum Node {
     },
     FunctionCallNode {
         function: Box<Node>,
-        arguments: Vec<Box<Node>>,
+        arguments: Vec<Node>,
     },
     MatchClauseNode {
         target: Box<Node>,
@@ -26,11 +26,11 @@ pub enum Node {
     },
     MatchExprNode {
         condition: Box<Node>,
-        clauses: Vec<Box<MatchClauseNode>>,
+        clauses: Vec<Node>,
         position: lexer::Position,
     },
     ExpressionListNode {
-        expressions: Vec<Box<Node>>,
+        expressions: Vec<Node>,
         position: lexer::Position,
     },
     EmptyIdentifierNode {
@@ -53,7 +53,7 @@ pub enum Node {
         position: lexer::Position,
     },
     ObjectLiteralNode {
-        entries: Vec<ObjectEntryNode>,
+        entries: Vec<Node>,
         position: lexer::Position,
     },
     ObjectEntryNode {
@@ -62,129 +62,131 @@ pub enum Node {
         position: lexer::Position,
     },
     ListLiteralNode {
-        vals: Vec<Box<Node>>,
+        vals: Vec<Node>,
         position: lexer::Position,
     },
     FunctionLiteralNode {
-        arguments: Vec<Box<Node>>,
+        arguments: Vec<Node>,
         body: Box<Node>,
         position: lexer::Position,
     },
 }
 
-impl fmt::Display for Node::FunctionLiteralNode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        return write!(f, "");
-    }
-}
-
-pub trait Position: fmt::Display {
-    fn position(&self) -> lexer::Position;
+trait Position {
+    fn pos(&self) -> lexer::Position;
 }
 
 impl Position for Node {
-    fn position(&self) -> lexer::Position {
-        match self.kind {
-            Node::UnaryExprNode => self.position,
-            Node::MatchClauseNode => self.target.position(),
-            Node::FunctionCallNode => self.function.position(),
-            Node::BinaryExprNode => self.position,
-            Node::MatchExprNode => self.position,
-            Node::ExpressionListNode => self.position,
-            Node::EmptyIdentifierNode => self.position,
-            Node::IdentifierNode => self.position,
-            Node::NumberLiteralNode => self.position,
-            Node::StringLiteralNode => self.position,
-            Node::BooleanLiteralNode => self.position,
-            Node::ObjectLiteralNode => self.position,
-            Node::ObjectEntryNode => self.position,
-            Node::ListLiteralNode => self.position,
-            Node::FunctionLiteralNode => self.position,
+    fn pos(&self) -> lexer::Position {
+        match self {
+            Node::UnaryExprNode { position, .. } => *position,
+            Node::MatchClauseNode { target, .. } => target.pos(),
+            Node::FunctionCallNode { function, .. } => function.pos(),
+            Node::BinaryExprNode { position, .. } => *position,
+            Node::MatchExprNode { position, .. } => *position,
+            Node::ExpressionListNode { position, .. } => *position,
+            Node::EmptyIdentifierNode { position, .. } => *position,
+            Node::IdentifierNode { position, .. } => *position,
+            Node::NumberLiteralNode { position, .. } => *position,
+            Node::StringLiteralNode { position, .. } => *position,
+            Node::BooleanLiteralNode { position, .. } => *position,
+            Node::ObjectLiteralNode { position, .. } => *position,
+            Node::ObjectEntryNode { position, .. } => *position,
+            Node::ListLiteralNode { position, .. } => *position,
+            Node::FunctionLiteralNode { position, .. } => *position,
         }
-        return self.position;
     }
 }
 
 impl fmt::Display for Node {
-    fn position(&self) -> lexer::Position {
-        match self.kind {
-            Node::UnaryExprNode => {
-                return write!(f, "Unary {:?} ({})", self.operator, self.operand)
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Node::UnaryExprNode {
+                operator, operand, ..
+            } => {
+                write!(f, "Unary {:?} ({})", operator, operand)
             }
-            Node::MatchClauseNode => {
-                return write!(f, "Clause ({}) -> ({})", self.target, self.expression)
+            Node::MatchClauseNode {
+                target, expression, ..
+            } => {
+                write!(f, "Clause ({}) -> ({})", target, expression)
             }
-            Node::FunctionCallNode => self.function.position(),
-            Node::BinaryExprNode => {
-                return write!(
+            Node::FunctionCallNode {
+                function,
+                arguments,
+                ..
+            } => {
+                write!(
                     f,
-                    "Binary ({}) {:?} ({})",
-                    self.left_operand, self.operator, self.right_operand
+                    "Call ({}) on ({})",
+                    function,
+                    arguments
+                        .into_iter()
+                        .map(|arg| arg.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", "),
                 )
             }
-            Node::MatchExprNode => write!(
+            Node::BinaryExprNode {
+                left_operand,
+                operator,
+                right_operand,
+                ..
+            } => {
+                write!(
+                    f,
+                    "Binary ({}) {:?} ({})",
+                    left_operand, operator, right_operand
+                )
+            }
+            Node::MatchExprNode {
+                condition, clauses, ..
+            } => write!(
                 f,
                 "Match on ({}) to {{{}}}",
-                self.condition,
-                (*self.clauses)
+                condition,
+                clauses
                     .into_iter()
                     .map(|clause| clause.to_string())
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
-            Node::ExpressionListNode => {
-                return write!(
+            Node::ExpressionListNode { expressions, .. } => {
+                write!(
                     f,
                     "Expression List ({})",
-                    (*self.expressions)
+                    expressions
                         .into_iter()
                         .map(|expr| expr.to_string())
                         .collect::<Vec<String>>()
                         .join(", ")
                 )
             }
-            Node::EmptyIdentifierNode => return write!(f, ""),
-            Node::IdentifierNode => return write!(f, ""),
-            Node::NumberLiteralNode => return write!(f, ""),
-            Node::StringLiteralNode => return write!(f, ""),
-            Node::BooleanLiteralNode => return write!(f, ""),
-            Node::ObjectLiteralNode => return write!(f, ""),
-            Node::ObjectEntryNode => return write!(f, ""),
-            Node::ListLiteralNode => return write!(f, ""),
-            Node::FunctionLiteralNode => {
-                return write!(
+            Node::EmptyIdentifierNode { .. } => write!(f, ""),
+            Node::IdentifierNode { .. } => write!(f, ""),
+            Node::NumberLiteralNode { .. } => write!(f, ""),
+            Node::StringLiteralNode { .. } => write!(f, ""),
+            Node::BooleanLiteralNode { .. } => write!(f, ""),
+            Node::ObjectLiteralNode { .. } => write!(f, ""),
+            Node::ObjectEntryNode { .. } => write!(f, ""),
+            Node::ListLiteralNode { .. } => write!(f, ""),
+            Node::FunctionLiteralNode {
+                body, arguments, ..
+            } => {
+                write!(
                     f,
                     "Function ({}) => ({})",
-                    self.function,
-                    (*self.arguments)
+                    arguments
                         .into_iter()
                         .map(|arg| arg.to_string())
                         .collect::<Vec<String>>()
-                        .join(", ")
+                        .join(", "),
+                    body
                 )
             }
         }
-        return write!(f, "Not implemented")
     }
 }
-
-impl_position!(
-    UnaryExprNode,
-    MatchClauseNode,
-    FunctionCallNode,
-    BinaryExprNode,
-    MatchExprNode,
-    ExpressionListNode,
-    EmptyIdentifierNode,
-    IdentifierNode,
-    NumberLiteralNode,
-    StringLiteralNode,
-    BooleanLiteralNode,
-    ObjectLiteralNode,
-    ObjectEntryNode,
-    ListLiteralNode,
-    FunctionLiteralNode,
-);
 
 fn guard_unexpected_input_end(tokens: &[lexer::Tok], idx: usize) -> Result<(), error::Err> {
     if idx >= tokens.len() {
@@ -285,18 +287,11 @@ fn is_binary_op(t: &lexer::Tok) -> bool {
 }
 
 fn parse_binary_expression(
-    left_operand: Box<Node>,
+    left_operand: Node,
     operator: &lexer::Tok,
     tokens: &[lexer::Tok],
     previous_priority: isize,
-) -> (Result<Box<Node>, error::Err>, usize) {
-    // return Ok((
-    //     Box::new(EmptyIdentifierNode {
-    //         position: lexer::Position { line: 1, col: 1 },
-    //     }),
-    //     0,
-    // ));
-
+) -> (Result<Node, error::Err>, usize) {
     let (right_atom, mut idx) = parse_atom(&tokens);
     match right_atom {
         Err(right_atom) => return (Err(right_atom), 0),
@@ -305,7 +300,7 @@ fn parse_binary_expression(
     let mut incr = 0;
 
     let mut ops: Vec<&lexer::Tok> = Vec::new();
-    let mut nodes: Vec<Box<Node>> = Vec::new();
+    let mut nodes: Vec<Node> = Vec::new();
     ops.push(operator);
     nodes.push(left_operand);
     nodes.push(right_atom.unwrap());
@@ -347,7 +342,7 @@ fn parse_binary_expression(
             // GoInk: Priority is higher than previous ops,
             // so make it a right-heavy tree
             let (subtree, incr) = parse_binary_expression(
-                *nodes.last().unwrap(),
+                nodes.last().unwrap().clone(),
                 &tokens[idx],
                 &tokens[idx + 1..],
                 get_op_priority(ops.last().unwrap()),
@@ -364,24 +359,23 @@ fn parse_binary_expression(
     }
 
     // GoInk: ops, nodes -> left-biased binary expression tree
-    let mut tree = &nodes[0];
+    let mut tree = nodes[0].clone();
     nodes.drain(0..1);
     while ops.len() > 0 {
-        let _last_tree = *tree;
-        tree: &Box<dyn Node> = &Box::new(BinaryExprNode {
+        tree = Node::BinaryExprNode {
             operator: ops[0].kind,
-            left_operand: _last_tree,
-            right_operand: nodes[0],
+            left_operand: Box::new(tree),
+            right_operand: Box::new(nodes[0].clone()),
             position: ops[0].position,
-        });
+        };
         ops.drain(0..1);
         nodes.drain(0..1);
     }
 
-    return (Ok(*tree), idx);
+    return (Ok(tree), idx);
 }
 
-fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
+fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
     let mut idx = 0;
 
     let consume_dangling_separator = |mut idx: usize| {
@@ -451,11 +445,11 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, us
 
                 consume_dangling_separator(idx);
                 return (
-                    Ok(Box::new(MatchExprNode {
-                        condition: bin_expr.unwrap(),
+                    Ok(Node::MatchExprNode {
+                        condition: Box::new(bin_expr.unwrap()),
                         clauses: clauses.unwrap(),
                         position: colon_pos,
-                    })),
+                    }),
                     idx,
                 );
             }
@@ -472,11 +466,11 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, us
 
             consume_dangling_separator(idx);
             return (
-                Ok(Box::new(MatchExprNode {
-                    condition: atom.unwrap(),
+                Ok(Node::MatchExprNode {
+                    condition: Box::new(atom.unwrap()),
                     clauses: clauses.unwrap(),
                     position: next_tok.position,
-                })),
+                }),
                 idx,
             );
         }
@@ -492,7 +486,7 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, us
     }
 }
 
-fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
+fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
     let mut err = guard_unexpected_input_end(tokens, 0);
     match err {
         Err(err) => return (Err(err), 0),
@@ -509,11 +503,11 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
             _ => {}
         }
         return (
-            Ok(Box::new(UnaryExprNode {
+            Ok(Node::UnaryExprNode {
                 operator: tok.kind,
-                operand: atom.unwrap(),
+                operand: Box::new(atom.unwrap()),
                 position: tok.position,
-            })),
+            }),
             idx + 1,
         );
     }
@@ -524,41 +518,41 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
         _ => {}
     }
 
-    let mut atom: Box<Node>;
+    let mut atom: Node;
     match tok.kind {
         lexer::Token::NumberLiteral => {
             return (
-                Ok(Box::new(NumberLiteralNode {
+                Ok(Node::NumberLiteralNode {
                     val: tok.num,
                     position: tok.position,
-                })),
+                }),
                 idx,
             );
         }
         lexer::Token::StringLiteral => {
             return (
-                Ok(Box::new(StringLiteralNode {
+                Ok(Node::StringLiteralNode {
                     val: tok.str.clone(),
                     position: tok.position,
-                })),
+                }),
                 idx,
             );
         }
         lexer::Token::TrueLiteral => {
             return (
-                Ok(Box::new(BooleanLiteralNode {
+                Ok(Node::BooleanLiteralNode {
                     val: true,
                     position: tok.position,
-                })),
+                }),
                 idx,
             );
         }
         lexer::Token::FalseLiteral => {
             return (
-                Ok(Box::new(BooleanLiteralNode {
+                Ok(Node::BooleanLiteralNode {
                     val: false,
                     position: tok.position,
-                })),
+                }),
                 idx,
             );
         }
@@ -576,10 +570,10 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
                     idx -= 1
                 }
                 _ => {
-                    atom = Box::new(IdentifierNode {
+                    atom = Node::IdentifierNode {
                         val: tok.str.clone(),
                         position: tok.position,
-                    })
+                    }
                 } // GoInk: may be called as a function, so flows beyond
                   // switch block
             }
@@ -602,9 +596,9 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
             }
 
             return (
-                Ok(Box::new(EmptyIdentifierNode {
+                Ok(Node::EmptyIdentifierNode {
                     position: tok.position,
-                })),
+                }),
                 idx,
             );
         }
@@ -612,7 +606,7 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
         // switch block
         lexer::Token::LeftParen => {
             // GoInk: grouped expression or function literal
-            let mut exprs: Vec<Box<Node>> = Vec::new();
+            let mut exprs: Vec<Node> = Vec::new();
             while tokens[idx].kind != lexer::Token::RightParen {
                 let (expr, incr) = parse_expression(&tokens[idx..]);
                 match expr {
@@ -649,16 +643,16 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
                 // so we backtrack one token.
                 idx -= 1;
             } else {
-                atom = Box::new(ExpressionListNode {
+                atom = Node::ExpressionListNode {
                     expressions: exprs,
                     position: tok.position,
-                })
+                }
             }
             // GoInk: may be called as a function, so flows beyond
             // switch block
         }
         lexer::Token::LeftBrace => {
-            let mut entries: Vec<ObjectEntryNode> = Vec::new();
+            let mut entries: Vec<Node> = Vec::new();
 
             while tokens[idx].kind != lexer::Token::RightBrace {
                 let (key_expr, key_incr) = parse_expression(&tokens[idx..]);
@@ -705,10 +699,10 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
 
                         // TODO: there must be a shorthand for this?
                         let key_expr = key_expr.unwrap();
-                        let position = key_expr.position();
-                        entries.push(ObjectEntryNode {
-                            key: key_expr,
-                            val: val_expr,
+                        let position = key_expr.pos();
+                        entries.push(Node::ObjectEntryNode {
+                            key: Box::new(key_expr),
+                            val: Box::new(val_expr),
                             position: position,
                         });
                     }
@@ -723,15 +717,15 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
             idx += 1; // GoInk: RightBrace
 
             return (
-                Ok(Box::new(ObjectLiteralNode {
+                Ok(Node::ObjectLiteralNode {
                     entries: entries,
                     position: tok.position,
-                })),
+                }),
                 idx,
             );
         }
         lexer::Token::LeftBracket => {
-            let mut vals: Vec<Box<Node>> = Vec::new();
+            let mut vals: Vec<Node> = Vec::new();
 
             while tokens[idx].kind != lexer::Token::RightBracket {
                 let (expr, incr) = parse_expression(&tokens[idx..]);
@@ -752,10 +746,10 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
             idx += 1; // GoInk: RightBracket
 
             return (
-                Ok(Box::new(ListLiteralNode {
+                Ok(Node::ListLiteralNode {
                     vals: vals,
                     position: tok.position,
-                })),
+                }),
                 idx,
             );
         }
@@ -794,11 +788,9 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
 
 // GoInk: parses everything that follows MatchColon
 // does not consume dangling separator -- that's for parse_expression
-fn parse_match_body(
-    tokens: &[lexer::Tok],
-) -> (Result<Vec<Box<MatchClauseNode>>, error::Err>, usize) {
+fn parse_match_body(tokens: &[lexer::Tok]) -> (Result<Vec<Node>, error::Err>, usize) {
     let mut idx = 1; // GoInk: LeftBrace
-    let mut clauses: Vec<Box<MatchClauseNode>> = Vec::new();
+    let mut clauses: Vec<Node> = Vec::new();
 
     let err = guard_unexpected_input_end(tokens, idx);
     match err {
@@ -827,7 +819,7 @@ fn parse_match_body(
     return (Ok(clauses), idx);
 }
 
-fn parse_match_call(tokens: &[lexer::Tok]) -> (Result<Box<MatchClauseNode>, error::Err>, usize) {
+fn parse_match_call(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
     let (atom, mut idx) = parse_expression(&tokens);
     match atom {
         Err(atom) => return (Err(atom), 0),
@@ -869,15 +861,15 @@ fn parse_match_call(tokens: &[lexer::Tok]) -> (Result<Box<MatchClauseNode>, erro
     idx += incr;
 
     return (
-        Ok(Box::new(MatchClauseNode {
-            target: atom.unwrap(),
-            expression: expr.unwrap(),
-        })),
+        Ok(Node::MatchClauseNode {
+            target: Box::new(atom.unwrap()),
+            expression: Box::new(expr.unwrap()),
+        }),
         idx,
     );
 }
 
-fn parse_match_clause(tokens: &[lexer::Tok]) -> (Result<Box<MatchClauseNode>, error::Err>, usize) {
+fn parse_match_clause(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
     let (atom, mut idx) = parse_expression(&tokens);
     match atom {
         Err(atom) => return (Err(atom), 0),
@@ -919,18 +911,18 @@ fn parse_match_clause(tokens: &[lexer::Tok]) -> (Result<Box<MatchClauseNode>, er
     idx += incr;
 
     return (
-        Ok(Box::new(MatchClauseNode {
-            target: atom.unwrap(),
-            expression: expr.unwrap(),
-        })),
+        Ok(Node::MatchClauseNode {
+            target: Box::new(atom.unwrap()),
+            expression: Box::new(expr.unwrap()),
+        }),
         idx,
     );
 }
 
-fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
+fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
     let tok = &tokens[0];
     let mut idx = 1;
-    let mut arguments: Vec<Box<Node>> = Vec::new();
+    let mut arguments: Vec<Node> = Vec::new();
 
     let err = guard_unexpected_input_end(tokens, idx);
     match err {
@@ -944,16 +936,16 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Er
                 let tk = &tokens[idx];
                 match tk.kind {
                     lexer::Token::Identifier => {
-                        let id_node = Box::new(IdentifierNode {
+                        let id_node = Node::IdentifierNode {
                             val: tk.str.clone(),
                             position: tk.position,
-                        });
+                        };
                         arguments.push(id_node)
                     }
                     lexer::Token::EmptyIdentifier => {
-                        let id_node = Box::new(EmptyIdentifierNode {
+                        let id_node = Node::EmptyIdentifierNode {
                             position: tk.position,
-                        });
+                        };
                         arguments.push(id_node)
                     }
                     _ => break,
@@ -1009,16 +1001,16 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Er
             idx += 1 // GoInk: RightParen
         }
         lexer::Token::Identifier => {
-            let id_node = Box::new(IdentifierNode {
+            let id_node = Node::IdentifierNode {
                 val: tok.str.clone(),
                 position: tok.position,
-            });
+            };
             arguments.push(id_node)
         }
         lexer::Token::EmptyIdentifier => {
-            let id_node = Box::new(EmptyIdentifierNode {
+            let id_node = Node::EmptyIdentifierNode {
                 position: tok.position,
-            });
+            };
             arguments.push(id_node)
         }
         _ => {
@@ -1064,21 +1056,18 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Er
     idx += 1;
 
     return (
-        Ok(Box::new(FunctionLiteralNode {
+        Ok(Node::FunctionLiteralNode {
             arguments: arguments,
-            body: body.unwrap(),
+            body: Box::new(body.unwrap()),
             position: tokens[0].position,
-        })),
+        }),
         idx,
     );
 }
 
-fn parse_function_call(
-    function: Box<Node>,
-    tokens: &[lexer::Tok],
-) -> (Result<Box<FunctionCallNode>, error::Err>, usize) {
+fn parse_function_call(function: Node, tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
     let mut idx = 1;
-    let mut arguments: Vec<Box<Node>> = Vec::new();
+    let mut arguments: Vec<Node> = Vec::new();
 
     let err = guard_unexpected_input_end(tokens, idx);
     match err {
@@ -1106,10 +1095,10 @@ fn parse_function_call(
     idx += 1; // GoInk: RightParen
 
     return (
-        Ok(Box::new(FunctionCallNode {
-            function: function,
+        Ok(Node::FunctionCallNode {
+            function: Box::new(function),
             arguments: arguments,
-        })),
+        }),
         idx,
     );
 }
