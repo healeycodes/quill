@@ -406,12 +406,13 @@ fn parse_binary_expression(
     }
 
     // GoInk: ops, nodes -> left-biased binary expression tree
-    let mut tree = nodes[0];
+    let mut tree = &nodes[0];
     nodes.drain(0..1);
     while ops.len() > 0 {
-        tree = Box::new(BinaryExprNode {
+        let _last_tree = *tree;
+        tree: &Box<dyn Node> = &Box::new(BinaryExprNode {
             operator: ops[0].kind,
-            left_operand: tree,
+            left_operand: _last_tree,
             right_operand: nodes[0],
             position: ops[0].position,
         });
@@ -419,7 +420,7 @@ fn parse_binary_expression(
         nodes.drain(0..1);
     }
 
-    return (Ok(tree), idx);
+    return (Ok(*tree), idx);
 }
 
 fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Box<Node>, error::Err>, usize) {
