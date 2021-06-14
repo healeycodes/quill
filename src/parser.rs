@@ -232,17 +232,16 @@ fn guard_unexpected_input_end(tokens: &[lexer::Tok], idx: usize) -> Result<(), e
 pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) -> Vec<&Node> {
     let mut nodes: Vec<&Node> = Vec::new();
     let mut idx = 0;
-    let length = tokens.len();
 
-    while idx < length {
-        if matches!(tokens[idx].kind, lexer::Token::Separator) {
+    while idx < tokens.len() {
+        if tokens[idx].kind == lexer::Token::Separator {
             // GoInk: this sometimes happens when the repl receives comment inputs
             idx += 1;
             continue;
         }
 
         let (expr, incr) = parse_expression(&tokens[idx..]);
-        idx += 1;
+        idx += incr;
 
         match expr {
             Err(ref e) => match e.reason {
@@ -780,7 +779,8 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
         }
     };
 
-    // GoInk : bounds check here because parse_expression may have consumed all tokens before this
+    // GoInk: bounds check here because parse_expression may have
+    // consumed all tokens before this
     while idx < tokens.len() && tokens[idx].kind == lexer::Token::LeftParen {
         let incr: usize;
         match parse_function_call(atom, &tokens[idx..]) {
