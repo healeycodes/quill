@@ -206,6 +206,34 @@ impl fmt::Display for Node {
     }
 }
 
+fn guard_unexpected_input_end(tokens: &[lexer::Tok], idx: usize) -> Result<(), error::Err> {
+    if idx >= tokens.len() {
+        if tokens.len() > 0 {
+            return Err(error::Err {
+                reason: error::ERR_SYNTAX,
+                message: format!("unexpected end of input at {}", tokens[tokens.len() - 1]),
+            });
+        }
+
+        return Err(error::Err {
+            reason: error::ERR_SYNTAX,
+            message: format!("unexpected end of input"),
+        });
+    }
+
+    return Ok(());
+}
+
+macro_rules! guard_unexpected_input_end {
+    ($tokens:expr,$idx:expr) => {{
+        let err = guard_unexpected_input_end($tokens, $idx);
+        match err {
+            Err(err) => return (Err(err), 0),
+            _ => {}
+        }
+    }};
+}
+
 // GoInk: Parse transforms a list of Tok (tokens) to Node (AST nodes).
 // This implementation uses recursive descent parsing.
 pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) -> Vec<&Node> {
@@ -313,11 +341,7 @@ fn parse_binary_expression(
             ops.push(&tokens[idx]);
             idx += 1;
 
-            let err = guard_unexpected_input_end(&tokens, idx);
-            match err {
-                Err(err) => return (Err(err), 0),
-                _ => {}
-            }
+            guard_unexpected_input_end!(tokens, idx);
 
             let (right_atom, incr) = parse_atom(&tokens[idx..]);
             match right_atom {
@@ -328,11 +352,7 @@ fn parse_binary_expression(
             nodes.push(right_atom.unwrap());
             idx += incr;
         } else {
-            let err = guard_unexpected_input_end(tokens, idx + 1);
-            match err {
-                Err(err) => return (Err(err), 0),
-                _ => {}
-            }
+            guard_unexpected_input_end!(tokens, idx + 1);
 
             // GoInk: Priority is higher than previous ops,
             // so make it a right-heavy tree
@@ -390,11 +410,7 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) 
     }
     idx += incr;
 
-    let err = guard_unexpected_input_end(tokens, idx);
-    match err {
-        Err(err) => return (Err(err), 0),
-        _ => {}
-    }
+    guard_unexpected_input_end!(tokens, idx);
 
     let next_tok = &tokens[idx];
     idx += 1;
@@ -485,11 +501,7 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) 
 }
 
 fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
-    let mut err = guard_unexpected_input_end(tokens, 0);
-    match err {
-        Err(err) => return (Err(err), 0),
-        _ => {}
-    }
+    guard_unexpected_input_end!(tokens, 0);
 
     let tok = &tokens[0];
     let mut idx = 1;
@@ -510,11 +522,7 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
         );
     }
 
-    err = guard_unexpected_input_end(tokens, idx);
-    match err {
-        Err(err) => return (Err(err), 0),
-        _ => {}
-    }
+    guard_unexpected_input_end!(tokens, idx);
 
     let mut atom: Node;
     match tok.kind {
@@ -616,19 +624,11 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
                 idx += incr;
                 exprs.push(expr.unwrap());
 
-                err = guard_unexpected_input_end(tokens, idx);
-                match err {
-                    Err(err) => return (Err(err), 0),
-                    _ => {}
-                }
+                guard_unexpected_input_end!(tokens, idx);
             }
             idx += 1; // GoInk: RightParen
 
-            err = guard_unexpected_input_end(tokens, idx);
-            match err {
-                Err(err) => return (Err(err), 0),
-                _ => {}
-            }
+            guard_unexpected_input_end!(tokens, idx);
 
             if tokens[idx].kind == lexer::Token::FunctionArrow {
                 let (_atom, _idx) = parse_function_literal(tokens);
@@ -664,11 +664,7 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
                 }
 
                 idx += key_incr;
-                err = guard_unexpected_input_end(tokens, idx);
-                match err {
-                    Err(err) => return (Err(err), 0),
-                    _ => {}
-                }
+                guard_unexpected_input_end!(tokens, idx);
 
                 if tokens[idx].kind == lexer::Token::KeyValueSeparator {
                     idx += 1;
@@ -686,11 +682,7 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
                     );
                 }
 
-                err = guard_unexpected_input_end(tokens, idx);
-                match err {
-                    Err(err) => return (Err(err), 0),
-                    _ => {}
-                }
+                guard_unexpected_input_end!(tokens, idx);
 
                 let (val_expr, val_incr) = parse_expression(&tokens[idx..]);
                 match val_expr {
@@ -708,11 +700,7 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
                     }
                 }
 
-                err = guard_unexpected_input_end(tokens, idx);
-                match err {
-                    Err(err) => return (Err(err), 0),
-                    _ => {}
-                }
+                guard_unexpected_input_end!(tokens, idx);
             }
             idx += 1; // GoInk: RightBrace
 
@@ -737,11 +725,7 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
                     }
                 }
 
-                let err = guard_unexpected_input_end(tokens, idx);
-                match err {
-                    Err(err) => return (Err(err), 0),
-                    _ => {}
-                }
+                guard_unexpected_input_end!(tokens, idx);
             }
             idx += 1; // GoInk: RightBracket
 
@@ -777,11 +761,7 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
         }
         idx += incr;
 
-        let err = guard_unexpected_input_end(tokens, idx);
-        match err {
-            Err(err) => return (Err(err), 0),
-            _ => {}
-        }
+        guard_unexpected_input_end!(tokens, idx);
     }
 
     return (Ok(atom), idx);
@@ -793,11 +773,7 @@ fn parse_match_body(tokens: &[lexer::Tok]) -> (Result<Vec<Node>, error::Err>, us
     let mut idx = 1; // GoInk: LeftBrace
     let mut clauses: Vec<Node> = Vec::new();
 
-    let err = guard_unexpected_input_end(tokens, idx);
-    match err {
-        Err(err) => return (Err(err), 0),
-        _ => {}
-    }
+    guard_unexpected_input_end!(tokens, idx);
 
     while tokens[idx].kind != lexer::Token::RightBrace {
         let (clause_node, incr) = parse_match_clause(&tokens[idx..]);
@@ -809,11 +785,7 @@ fn parse_match_body(tokens: &[lexer::Tok]) -> (Result<Vec<Node>, error::Err>, us
 
         clauses.push(clause_node.unwrap());
 
-        let err = guard_unexpected_input_end(tokens, idx);
-        match err {
-            Err(err) => return (Err(err), 0),
-            _ => {}
-        }
+        guard_unexpected_input_end!(tokens, idx);
     }
     idx += 1; // GoInk: RightBrace
 
@@ -827,11 +799,7 @@ fn parse_match_call(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) 
         _ => {}
     }
 
-    let err = guard_unexpected_input_end(tokens, idx);
-    match err {
-        Err(err) => return (Err(err), 0),
-        _ => {}
-    }
+    guard_unexpected_input_end!(tokens, idx);
 
     if tokens[idx].kind != lexer::Token::CaseArrow {
         return (
@@ -848,11 +816,7 @@ fn parse_match_call(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) 
     }
     idx += 1; // GoInk: CaseArrow
 
-    let err = guard_unexpected_input_end(tokens, idx);
-    match err {
-        Err(err) => return (Err(err), 0),
-        _ => {}
-    }
+    guard_unexpected_input_end!(tokens, idx);
 
     let (expr, incr) = parse_expression(&tokens[idx..]);
     match expr {
@@ -877,11 +841,7 @@ fn parse_match_clause(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize
         _ => {}
     }
 
-    let err = guard_unexpected_input_end(tokens, idx);
-    match err {
-        Err(err) => return (Err(err), 0),
-        _ => {}
-    }
+    guard_unexpected_input_end!(tokens, idx);
 
     if tokens[idx].kind != lexer::Token::CaseArrow {
         return (
@@ -898,11 +858,7 @@ fn parse_match_clause(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize
     }
     idx += 1; // CaseArrow
 
-    let err = guard_unexpected_input_end(tokens, idx);
-    match err {
-        Err(err) => return (Err(err), 0),
-        _ => {}
-    }
+    guard_unexpected_input_end!(tokens, idx);
 
     let (expr, incr) = parse_expression(&tokens[idx..]);
     match expr {
@@ -925,11 +881,7 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, u
     let mut idx = 1;
     let mut arguments: Vec<Node> = Vec::new();
 
-    let err = guard_unexpected_input_end(tokens, idx);
-    match err {
-        Err(err) => return (Err(err), 0),
-        _ => {}
-    }
+    guard_unexpected_input_end!(tokens, idx);
 
     match tok.kind {
         lexer::Token::LeftParen => {
@@ -953,11 +905,7 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, u
                 }
                 idx += 1;
 
-                let err = guard_unexpected_input_end(tokens, idx);
-                match err {
-                    Err(err) => return (Err(err), 0),
-                    _ => {}
-                }
+                guard_unexpected_input_end!(tokens, idx);
 
                 if tokens[idx].kind != lexer::Token::Separator {
                     return (
@@ -976,11 +924,7 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, u
                 idx += 1; // GoInk: Separator
             }
 
-            let err = guard_unexpected_input_end(tokens, idx);
-            match err {
-                Err(err) => return (Err(err), 0),
-                _ => {}
-            }
+            guard_unexpected_input_end!(tokens, idx);
 
             if tokens[idx].kind != lexer::Token::RightParen {
                 return (
@@ -1022,11 +966,7 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, u
         }
     }
 
-    let err = guard_unexpected_input_end(tokens, idx);
-    match err {
-        Err(err) => return (Err(err), 0),
-        _ => {}
-    }
+    guard_unexpected_input_end!(tokens, idx);
 
     if tokens[idx].kind != lexer::Token::FunctionArrow {
         return (
@@ -1064,11 +1004,7 @@ fn parse_function_call(function: Node, tokens: &[lexer::Tok]) -> (Result<Node, e
     let mut idx = 1;
     let mut arguments: Vec<Node> = Vec::new();
 
-    let err = guard_unexpected_input_end(tokens, idx);
-    match err {
-        Err(err) => return (Err(err), 0),
-        _ => {}
-    }
+    guard_unexpected_input_end!(tokens, idx);
 
     while tokens[idx].kind != lexer::Token::RightParen {
         let (expr, incr) = parse_expression(&tokens[idx..]);
@@ -1080,11 +1016,7 @@ fn parse_function_call(function: Node, tokens: &[lexer::Tok]) -> (Result<Node, e
         idx += incr;
         arguments.push(expr.unwrap());
 
-        let err = guard_unexpected_input_end(tokens, idx);
-        match err {
-            Err(err) => return (Err(err), 0),
-            _ => {}
-        }
+        guard_unexpected_input_end!(tokens, idx);
     }
 
     idx += 1; // GoInk: RightParen
@@ -1096,22 +1028,4 @@ fn parse_function_call(function: Node, tokens: &[lexer::Tok]) -> (Result<Node, e
         }),
         idx,
     );
-}
-
-fn guard_unexpected_input_end(tokens: &[lexer::Tok], idx: usize) -> Result<(), error::Err> {
-    if idx >= tokens.len() {
-        if tokens.len() > 0 {
-            return Err(error::Err {
-                reason: error::ERR_SYNTAX,
-                message: format!("unexpected end of input at {}", tokens[tokens.len() - 1]),
-            });
-        }
-
-        return Err(error::Err {
-            reason: error::ERR_SYNTAX,
-            message: format!("unexpected end of input"),
-        });
-    }
-
-    return Ok(());
 }
