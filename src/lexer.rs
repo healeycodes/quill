@@ -295,7 +295,7 @@ pub fn tokenize(tokens: &mut Vec<Tok>, source: &Vec<&str>, fatal_error: bool, de
     }
     while source_pos < source.len() {
         let character = source[source_pos];
-        if character == "\\" {
+        if character == "'" {
             if in_string_literal {
                 commit(
                     Tok {
@@ -472,7 +472,7 @@ pub fn tokenize(tokens: &mut Vec<Tok>, source: &Vec<&str>, fatal_error: bool, de
             commit_char(Token::LeftBracket, lexer_state)
         } else if character == "]" {
             ensure_separator(lexer_state);
-            commit_char(Token::LeftBracket, lexer_state)
+            commit_char(Token::RightBracket, lexer_state)
         } else if character == "{" {
             commit_char(Token::LeftBrace, lexer_state)
         } else if character == "}" {
