@@ -1046,21 +1046,18 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, u
         _ => {}
     }
 
-    match tokens[idx].kind {
-        lexer::Token::FunctionArrow => {
-            return (
-                Err(error::Err {
-                    reason: error::ERR_SYNTAX,
-                    message: format!(
-                        "expected {:?} but found {:?}",
-                        lexer::Token::FunctionArrow,
-                        tokens[idx]
-                    ),
-                }),
-                0,
-            )
-        }
-        _ => {}
+    if tokens[idx].kind != lexer::Token::FunctionArrow {
+        return (
+            Err(error::Err {
+                reason: error::ERR_SYNTAX,
+                message: format!(
+                    "expected {:?} but found {:?}",
+                    lexer::Token::FunctionArrow,
+                    tokens[idx]
+                ),
+            }),
+            0,
+        );
     }
     idx += 1; // GoInk: FunctionArrow
 
@@ -1069,7 +1066,7 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, u
         Err(body) => return (Err(body), 0),
         _ => {}
     }
-    idx += 1;
+    idx += incr;
 
     return (
         Ok(Node::FunctionLiteralNode {
