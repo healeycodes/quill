@@ -66,11 +66,6 @@ pub enum Token {
     RightBrace,
 }
 
-// impl Copy for Token {
-//     fn copy(&self) -> Token {
-//     }
-// }
-
 #[derive(Debug, Copy, Clone)]
 pub struct Position {
     pub line: i32,
@@ -94,6 +89,15 @@ pub struct Tok {
     pub str: String,
     pub num: f64,
     pub position: Position,
+}
+
+impl fmt::Display for Tok {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Token::Identifier | Token::StringLiteral {
+                // TODO
+        }
+    }
 }
 
 impl Tok {

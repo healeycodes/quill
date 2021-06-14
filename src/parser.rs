@@ -104,7 +104,7 @@ impl fmt::Display for Node {
             Node::UnaryExprNode {
                 operator, operand, ..
             } => {
-                write!(f, "Unary {:?} ({})", operator, operand)
+                write!(f, "Unary {} ({})", operator, operand)
             }
             Node::MatchClauseNode {
                 target, expression, ..
@@ -209,7 +209,6 @@ impl fmt::Display for Node {
 // GoInk: Parse transforms a list of Tok (tokens) to Node (AST nodes).
 // This implementation uses recursive descent parsing.
 pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) -> Vec<&Node> {
-    println!("parse");
     let mut nodes: Vec<&Node> = Vec::new();
     let mut idx = 0;
 
@@ -249,7 +248,6 @@ pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) ->
 }
 
 fn get_op_priority(t: &lexer::Tok) -> isize {
-    println!("get_op_priority");
     // GoInk: higher == greater priority
     match t.kind {
         lexer::Token::AccessorOp => 100,
@@ -266,7 +264,6 @@ fn get_op_priority(t: &lexer::Tok) -> isize {
 }
 
 fn is_binary_op(t: &lexer::Tok) -> bool {
-    println!("get_op_priority");
     match t.kind {
         lexer::Token::AddOp
         | lexer::Token::SubtractOp
@@ -291,7 +288,6 @@ fn parse_binary_expression(
     tokens: &[lexer::Tok],
     previous_priority: isize,
 ) -> (Result<Node, error::Err>, usize) {
-    println!("parse_binary_expression");
     let (right_atom, mut idx) = parse_atom(&tokens);
     match right_atom {
         Err(right_atom) => return (Err(right_atom), 0),
@@ -376,7 +372,6 @@ fn parse_binary_expression(
 }
 
 fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
-    println!("parse_expression");
     let mut idx = 0;
 
     let consume_dangling_separator = |idx: usize, tokens: &[lexer::Tok]| {
@@ -491,7 +486,6 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) 
 }
 
 fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
-    println!("parse_atom");
     let mut err = guard_unexpected_input_end(tokens, 0);
     match err {
         Err(err) => return (Err(err), 0),
@@ -797,7 +791,6 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
 // GoInk: parses everything that follows MatchColon
 // does not consume dangling separator -- that's for parse_expression
 fn parse_match_body(tokens: &[lexer::Tok]) -> (Result<Vec<Node>, error::Err>, usize) {
-    println!("parse_match_body");
     let mut idx = 1; // GoInk: LeftBrace
     let mut clauses: Vec<Node> = Vec::new();
 
@@ -829,7 +822,6 @@ fn parse_match_body(tokens: &[lexer::Tok]) -> (Result<Vec<Node>, error::Err>, us
 }
 
 fn parse_match_call(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
-    println!("parse_match_call");
     let (atom, mut idx) = parse_expression(&tokens);
     match atom {
         Err(atom) => return (Err(atom), 0),
@@ -880,7 +872,6 @@ fn parse_match_call(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) 
 }
 
 fn parse_match_clause(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
-    println!("parse_match_clause");
     let (atom, mut idx) = parse_expression(&tokens);
     match atom {
         Err(atom) => return (Err(atom), 0),
@@ -931,7 +922,6 @@ fn parse_match_clause(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize
 }
 
 fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
-    println!("parse_function_literal");
     let tok = &tokens[0];
     let mut idx = 1;
     let mut arguments: Vec<Node> = Vec::new();
@@ -1072,7 +1062,6 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, u
 }
 
 fn parse_function_call(function: Node, tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
-    println!("parse_function_call");
     let mut idx = 1;
     let mut arguments: Vec<Node> = Vec::new();
 
