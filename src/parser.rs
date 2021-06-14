@@ -162,14 +162,32 @@ impl fmt::Display for Node {
                         .join(", ")
                 )
             }
-            Node::EmptyIdentifierNode { .. } => write!(f, ""),
-            Node::IdentifierNode { .. } => write!(f, ""),
-            Node::NumberLiteralNode { .. } => write!(f, ""),
-            Node::StringLiteralNode { .. } => write!(f, ""),
-            Node::BooleanLiteralNode { .. } => write!(f, ""),
-            Node::ObjectLiteralNode { .. } => write!(f, ""),
-            Node::ObjectEntryNode { .. } => write!(f, ""),
-            Node::ListLiteralNode { .. } => write!(f, ""),
+            Node::EmptyIdentifierNode { .. } => write!(f, "Empty Identifier"),
+            Node::IdentifierNode { val, .. } => write!(f, "Identifier '{}'", val),
+            // TODO: add n_to_s call here
+            Node::NumberLiteralNode { val, .. } => write!(f, "Number {}", val),
+            Node::StringLiteralNode { val, .. } => write!(f, "String {}", val),
+            Node::BooleanLiteralNode { val, .. } => write!(f, "Boolean {}", val),
+            Node::ObjectLiteralNode { entries, .. } => write!(
+                f,
+                "Object {}",
+                entries
+                    .into_iter()
+                    .map(|entry| entry.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
+            Node::ObjectEntryNode { key, val, .. } => {
+                write!(f, "Object Entry ({}): ({})", key, val)
+            }
+            Node::ListLiteralNode { vals, .. } => write!(
+                f,
+                "List [{}]",
+                vals.into_iter()
+                    .map(|val| val.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
             Node::FunctionLiteralNode {
                 body, arguments, ..
             } => {
@@ -696,8 +714,6 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
                     Ok(val_expr) => {
                         // GoInk : Separator consumed by parse_expression
                         idx += val_incr;
-
-                        // TODO: there must be a shorthand for this?
                         let key_expr = key_expr.unwrap();
                         let position = key_expr.pos();
                         entries.push(Node::ObjectEntryNode {
