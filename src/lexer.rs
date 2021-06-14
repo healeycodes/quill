@@ -94,8 +94,14 @@ pub struct Tok {
 impl fmt::Display for Tok {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Token::Identifier | Token::StringLiteral {
-                // TODO
+            Token::Identifier | Token::StringLiteral => {
+                write!(
+                    f,
+                    "{} '{}' [{}]",
+                    &self.kind,
+                    &self.str,
+                    &self.position
+                )
         }
     }
 }
