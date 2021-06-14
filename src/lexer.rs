@@ -375,7 +375,7 @@ pub fn tokenize(tokens: &mut Vec<Tok>, source: &Vec<&str>, fatal_error: bool, de
         } else if character == "&" {
             commit_char(Token::LogicalAndOp, lexer_state)
         } else if character == "|" {
-            commit_char(Token::LogicalAndOp, lexer_state)
+            commit_char(Token::LogicalOrOp, lexer_state)
         } else if character == "^" {
             commit_char(Token::LogicalXorOp, lexer_state)
         } else if character == "<" {
