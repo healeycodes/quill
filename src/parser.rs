@@ -562,26 +562,27 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
             );
         }
         lexer::Token::Identifier => {
-            match tokens[idx].kind {
-                lexer::Token::FunctionArrow => {
-                    let (_atom, _idx) = parse_function_literal(tokens);
-                    match _atom {
-                        Err(_atom) => return (Err(_atom), 0),
-                        _ => atom = _atom.unwrap(),
+            if tokens[idx].kind == lexer::Token::FunctionArrow {
+                let (_atom, _idx) = parse_function_literal(tokens);
+                match _atom {
+                    Err(_atom) => return (Err(_atom), 0),
+                    _ => {
+                        atom = _atom.unwrap();
+                        idx = _idx
                     }
-                    // GoInk : parse_atom should not consume trailing Separators, but
-                    // parseFunctionLiteral does because it ends with expressions.
-                    // so we backtrack one token.
-                    idx -= 1
                 }
-                _ => {
-                    atom = Node::IdentifierNode {
-                        val: tok.str.clone(),
-                        position: tok.position,
-                    }
-                } // GoInk: may be called as a function, so flows beyond
-                  // switch block
+                // GoInk: parse_atom should not consume trailing Separators, but
+                // parse_function_literal does because it ends with expressions.
+                // so we backtrack one token.
+                idx -= 1
+            } else {
+                atom = Node::IdentifierNode {
+                    val: tok.str.clone(),
+                    position: tok.position,
+                }
             }
+            // GoInk: may be called as a function, so flows beyond
+            // switch block
         }
         lexer::Token::EmptyIdentifier => {
             match tokens[idx].kind {
@@ -640,7 +641,10 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
                 let (_atom, _idx) = parse_function_literal(tokens);
                 match _atom {
                     Err(_atom) => return (Err(_atom), 0),
-                    _ => atom = _atom.unwrap(),
+                    _ => {
+                        atom = _atom.unwrap();
+                        idx = _idx
+                    }
                 }
 
                 // GoInk: parse_atom should not consume trailing Separators, but
