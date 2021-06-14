@@ -1,4 +1,5 @@
 use crate::error;
+use crate::eval;
 use crate::lexer;
 use crate::log;
 use std::fmt;
@@ -164,8 +165,7 @@ impl fmt::Display for Node {
             }
             Node::EmptyIdentifierNode { .. } => write!(f, "Empty Identifier"),
             Node::IdentifierNode { val, .. } => write!(f, "Identifier '{}'", val),
-            // TODO: add n_to_s call here
-            Node::NumberLiteralNode { val, .. } => write!(f, "Number {}", val),
+            Node::NumberLiteralNode { val, .. } => write!(f, "Number {}", eval::n_to_s(*val)),
             Node::StringLiteralNode { val, .. } => write!(f, "String {}", val),
             Node::BooleanLiteralNode { val, .. } => write!(f, "Boolean {}", val),
             Node::ObjectLiteralNode { entries, .. } => write!(
@@ -293,7 +293,6 @@ fn parse_binary_expression(
         Err(right_atom) => return (Err(right_atom), 0),
         _ => {}
     }
-    let incr = 0;
 
     let mut ops: Vec<&lexer::Tok> = Vec::new();
     let mut nodes: Vec<Node> = Vec::new();
@@ -1104,10 +1103,7 @@ fn guard_unexpected_input_end(tokens: &[lexer::Tok], idx: usize) -> Result<(), e
         if tokens.len() > 0 {
             return Err(error::Err {
                 reason: error::ERR_SYNTAX,
-                message: format!(
-                    "unexpected end of input at {}",
-                    tokens[tokens.len() - 1].string()
-                ),
+                message: format!("unexpected end of input at {}", tokens[tokens.len() - 1]),
             });
         }
 

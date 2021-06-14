@@ -1,6 +1,7 @@
 use crate::error;
 use crate::eval;
 use crate::log;
+use std::fmt;
 
 // GoInk: Kind is the sum type of all possible types
 // of tokens in an Ink program
@@ -72,9 +73,9 @@ pub struct Position {
     pub col: i32,
 }
 
-impl Position {
-    fn string(&self) -> String {
-        return format!("{}:{}", &self.line, &self.col);
+impl fmt::Display for Position {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        return write!(f, "{}:{}", &self.line, &self.col);
     }
 }
 
@@ -93,37 +94,18 @@ pub struct Tok {
 
 impl fmt::Display for Tok {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Token::Identifier | Token::StringLiteral => {
-                write!(
-                    f,
-                    "{} '{}' [{}]",
-                    &self.kind,
-                    &self.str,
-                    &self.position
-                )
-        }
-    }
-}
-
-impl Tok {
-    pub fn string(&self) -> String {
         match self.kind {
             Token::Identifier | Token::StringLiteral => {
-                format!(
-                    "{:?} '{}' [{}]",
-                    &self.kind,
-                    &self.str,
-                    &self.position.string()
-                )
+                write!(f, "{} '{}' [{}]", &self.kind, &self.str, &self.position)
             }
-            Token::NumberLiteral => format!(
-                "{:?} '{}' [{}]",
+            Token::NumberLiteral => write!(
+                f,
+                "{} '{}' [{}]",
                 &self.kind,
                 eval::n_to_s(self.num),
-                &self.position.string()
+                &self.position
             ),
-            _ => format!("{:?} [{}]", &self.kind, &self.position.string()),
+            _ => write!(f, "{} [{}]", &self.kind, &self.position),
         }
     }
 }
@@ -140,7 +122,7 @@ struct LexerState<'a> {
 
 fn simple_commit(tok: Tok, lexer_state: &mut LexerState) {
     if lexer_state.debug_lexer {
-        log::log_debug(&["lex ->".to_string(), tok.string()])
+        log::log_debug(&[String::from("lex ->"), tok.to_string()])
     }
     *lexer_state.last_kind = tok.kind.clone();
     lexer_state.tokens.push(tok);
@@ -181,9 +163,7 @@ fn commit_clear(lexer_state: &mut LexerState) {
                             reason: error::ERR_SYNTAX,
                             message: format!(
                                 "parsing error in number at {}:{}, {}",
-                                lexer_state.line_no,
-                                lexer_state.col_no,
-                                err.to_string()
+                                lexer_state.line_no, lexer_state.col_no, err
                             ),
                         };
                         if lexer_state.fatal_error {
@@ -497,47 +477,52 @@ pub fn tokenize(tokens: &mut Vec<Tok>, source: &Vec<&str>, fatal_error: bool, de
     ensure_separator(lexer_state);
 }
 
-impl Kind {
-    fn string(&self) -> String {
-        String::from(match self {
-            Token::UnaryExpr => "unary expression",
-            Token::BinaryExpr => "binary expression",
-            Token::MatchExpr => "match expression",
-            Token::Identifier => "identifier",
-            Token::EmptyIdentifier => "'_'",
-            Token::FunctionCall => "function call",
-            Token::NumberLiteral => "number literal",
-            Token::StringLiteral => "string literal",
-            Token::ListLiteral => "list composite literal",
-            Token::FunctionLiteral => "function literal",
-            Token::TrueLiteral => "'true'",
-            Token::FalseLiteral => "'false'",
-            Token::AccessorOp => "'.'",
-            Token::EqualOp => "'='",
-            Token::FunctionArrow => "'=>'",
-            Token::KeyValueSeparator => "':'",
-            Token::DefineOp => "':='",
-            Token::MatchColon => "'::'",
-            Token::CaseArrow => "'->'",
-            Token::SubtractOp => "'-'",
-            Token::NegationOp => "'~'",
-            Token::AddOp => "'+'",
-            Token::MultiplyOp => "'*'",
-            Token::DivideOp => "'/'",
-            Token::ModulusOp => "'%'",
-            Token::GreaterThanOp => "'>'",
-            Token::LessThanOp => "'<'",
-            Token::LogicalAndOp => "'&'",
-            Token::LogicalOrOp => "'|'",
-            Token::LogicalXorOp => "'^'",
-            Token::Separator => "','",
-            Token::LeftParen => "'('",
-            Token::RightParen => "')'",
-            Token::LeftBracket => "'['",
-            Token::RightBracket => "']'",
-            Token::LeftBrace => "'{'",
-            Token::RightBrace => "'}'",
-            _ => "unknown token",
-        })
+impl fmt::Display for Kind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Token::UnaryExpr => "unary expression",
+                Token::BinaryExpr => "binary expression",
+                Token::MatchExpr => "match expression",
+                Token::MatchClause => "match clause",
+                Token::Identifier => "identifier",
+                Token::EmptyIdentifier => "'_'",
+                Token::FunctionCall => "function call",
+                Token::NumberLiteral => "number literal",
+                Token::StringLiteral => "string literal",
+                Token::ObjectLiteral => "composite literal",
+                Token::ListLiteral => "list composite literal",
+                Token::FunctionLiteral => "function literal",
+                Token::TrueLiteral => "'true'",
+                Token::FalseLiteral => "'false'",
+                Token::AccessorOp => "'.'",
+                Token::EqualOp => "'='",
+                Token::FunctionArrow => "'=>'",
+                Token::KeyValueSeparator => "':'",
+                Token::DefineOp => "':='",
+                Token::MatchColon => "'::'",
+                Token::CaseArrow => "'->'",
+                Token::SubtractOp => "'-'",
+                Token::NegationOp => "'~'",
+                Token::AddOp => "'+'",
+                Token::MultiplyOp => "'*'",
+                Token::DivideOp => "'/'",
+                Token::ModulusOp => "'%'",
+                Token::GreaterThanOp => "'>'",
+                Token::LessThanOp => "'<'",
+                Token::LogicalAndOp => "'&'",
+                Token::LogicalOrOp => "'|'",
+                Token::LogicalXorOp => "'^'",
+                Token::Separator => "','",
+                Token::LeftParen => "'('",
+                Token::RightParen => "')'",
+                Token::LeftBracket => "'['",
+                Token::RightBracket => "']'",
+                Token::LeftBrace => "'{'",
+                Token::RightBrace => "'}'",
+            }
+        )
     }
 }
