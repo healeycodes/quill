@@ -206,30 +206,10 @@ impl fmt::Display for Node {
     }
 }
 
-fn guard_unexpected_input_end(tokens: &[lexer::Tok], idx: usize) -> Result<(), error::Err> {
-    if idx >= tokens.len() {
-        if tokens.len() > 0 {
-            return Err(error::Err {
-                reason: error::ERR_SYNTAX,
-                message: format!(
-                    "unexpected end of input at {}",
-                    tokens[tokens.len() - 1].string()
-                ),
-            });
-        }
-
-        return Err(error::Err {
-            reason: error::ERR_SYNTAX,
-            message: format!("unexpected end of input"),
-        });
-    }
-
-    return Ok(());
-}
-
 // GoInk: Parse transforms a list of Tok (tokens) to Node (AST nodes).
 // This implementation uses recursive descent parsing.
 pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) -> Vec<&Node> {
+    println!("parse");
     let mut nodes: Vec<&Node> = Vec::new();
     let mut idx = 0;
 
@@ -269,6 +249,7 @@ pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) ->
 }
 
 fn get_op_priority(t: &lexer::Tok) -> isize {
+    println!("get_op_priority");
     // GoInk: higher == greater priority
     match t.kind {
         lexer::Token::AccessorOp => 100,
@@ -285,6 +266,7 @@ fn get_op_priority(t: &lexer::Tok) -> isize {
 }
 
 fn is_binary_op(t: &lexer::Tok) -> bool {
+    println!("get_op_priority");
     match t.kind {
         lexer::Token::AddOp
         | lexer::Token::SubtractOp
@@ -309,12 +291,13 @@ fn parse_binary_expression(
     tokens: &[lexer::Tok],
     previous_priority: isize,
 ) -> (Result<Node, error::Err>, usize) {
+    println!("parse_binary_expression");
     let (right_atom, mut idx) = parse_atom(&tokens);
     match right_atom {
         Err(right_atom) => return (Err(right_atom), 0),
         _ => {}
     }
-    let mut incr = 0;
+    let incr = 0;
 
     let mut ops: Vec<&lexer::Tok> = Vec::new();
     let mut nodes: Vec<Node> = Vec::new();
@@ -350,7 +333,7 @@ fn parse_binary_expression(
             nodes.push(right_atom.unwrap());
             idx += incr;
         } else {
-            let err = guard_unexpected_input_end(tokens, idx);
+            let err = guard_unexpected_input_end(tokens, idx + 1);
             match err {
                 Err(err) => return (Err(err), 0),
                 _ => {}
@@ -393,13 +376,16 @@ fn parse_binary_expression(
 }
 
 fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
+    println!("parse_expression");
     let mut idx = 0;
 
-    let consume_dangling_separator = |mut idx: usize| {
+    let consume_dangling_separator = |idx: usize, tokens: &[lexer::Tok]| {
         // GoInk: bounds check in case parse_expression called at some point
         // consumed end token
         if idx < tokens.len() && tokens[idx].kind == lexer::Token::Separator {
-            idx += 1;
+            idx + 1
+        } else {
+            idx
         }
     };
 
@@ -422,7 +408,7 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) 
     match next_tok.kind {
         // GoInk: consuming dangling separator
         lexer::Token::Separator => return (Ok(atom.unwrap()), idx),
-        // GoInk:these belong to the parent atom that contains this expression,
+        // GoInk: these belong to the parent atom that contains this expression,
         // so return without consuming token (idx - 1)
         lexer::Token::RightParen | lexer::Token::KeyValueSeparator | lexer::Token::CaseArrow => {
             return (Ok(atom.unwrap()), idx - 1)
@@ -460,7 +446,7 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) 
                 }
                 idx += incr;
 
-                consume_dangling_separator(idx);
+                idx = consume_dangling_separator(idx, tokens);
                 return (
                     Ok(Node::MatchExprNode {
                         condition: Box::new(bin_expr.unwrap()),
@@ -471,7 +457,7 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) 
                 );
             }
 
-            consume_dangling_separator(idx);
+            idx = consume_dangling_separator(idx, tokens);
             return (Ok(bin_expr.unwrap()), idx);
         }
         lexer::Token::MatchColon => {
@@ -480,8 +466,9 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) 
                 Err(clauses) => return (Err(clauses), 0),
                 _ => {}
             }
+            idx += incr;
 
-            consume_dangling_separator(idx);
+            idx = consume_dangling_separator(idx, tokens);
             return (
                 Ok(Node::MatchExprNode {
                     condition: Box::new(atom.unwrap()),
@@ -504,6 +491,7 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) 
 }
 
 fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
+    println!("parse_atom");
     let mut err = guard_unexpected_input_end(tokens, 0);
     match err {
         Err(err) => return (Err(err), 0),
@@ -805,6 +793,7 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
 // GoInk: parses everything that follows MatchColon
 // does not consume dangling separator -- that's for parse_expression
 fn parse_match_body(tokens: &[lexer::Tok]) -> (Result<Vec<Node>, error::Err>, usize) {
+    println!("parse_match_body");
     let mut idx = 1; // GoInk: LeftBrace
     let mut clauses: Vec<Node> = Vec::new();
 
@@ -836,6 +825,7 @@ fn parse_match_body(tokens: &[lexer::Tok]) -> (Result<Vec<Node>, error::Err>, us
 }
 
 fn parse_match_call(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
+    println!("parse_match_call");
     let (atom, mut idx) = parse_expression(&tokens);
     match atom {
         Err(atom) => return (Err(atom), 0),
@@ -886,6 +876,7 @@ fn parse_match_call(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) 
 }
 
 fn parse_match_clause(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
+    println!("parse_match_clause");
     let (atom, mut idx) = parse_expression(&tokens);
     match atom {
         Err(atom) => return (Err(atom), 0),
@@ -936,6 +927,7 @@ fn parse_match_clause(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize
 }
 
 fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
+    println!("parse_function_literal");
     let tok = &tokens[0];
     let mut idx = 1;
     let mut arguments: Vec<Node> = Vec::new();
@@ -973,22 +965,21 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, u
                     Err(err) => return (Err(err), 0),
                     _ => {}
                 }
-                match tokens[idx].kind {
-                    lexer::Token::Separator => (),
-                    _ => {
-                        return (
-                            Err(error::Err {
-                                reason: error::ERR_SYNTAX,
-                                message: format!(
-                                    "expected arguments in a list separated by {:?}, found {:?}",
-                                    lexer::Token::Separator,
-                                    tokens[idx]
-                                ),
-                            }),
-                            0,
-                        )
-                    }
+
+                if tokens[idx].kind != lexer::Token::Separator {
+                    return (
+                        Err(error::Err {
+                            reason: error::ERR_SYNTAX,
+                            message: format!(
+                                "expected arguments in a list separated by {:?}, found {:?}",
+                                lexer::Token::Separator,
+                                tokens[idx]
+                            ),
+                        }),
+                        0,
+                    );
                 }
+
                 idx += 1; // GoInk: Separator
             }
 
@@ -998,22 +989,20 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, u
                 _ => {}
             }
 
-            match tokens[idx].kind {
-                lexer::Token::RightParen => {}
-                _ => {
-                    return (
-                        Err(error::Err {
-                            reason: error::ERR_SYNTAX,
-                            message: format!(
-                                "expected arguments list to terminate with {:?}, found {:?}",
-                                lexer::Token::RightParen,
-                                tokens[idx]
-                            ),
-                        }),
-                        0,
-                    )
-                }
+            if tokens[idx].kind != lexer::Token::RightParen {
+                return (
+                    Err(error::Err {
+                        reason: error::ERR_SYNTAX,
+                        message: format!(
+                            "expected arguments list to terminate with {:?}, found {:?}",
+                            lexer::Token::RightParen,
+                            tokens[idx]
+                        ),
+                    }),
+                    0,
+                );
             }
+
             idx += 1 // GoInk: RightParen
         }
         lexer::Token::Identifier => {
@@ -1061,7 +1050,7 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, u
     }
     idx += 1; // GoInk: FunctionArrow
 
-    let (body, incr) = parse_expression(tokens);
+    let (body, incr) = parse_expression(&tokens[idx..]);
     match body {
         Err(body) => return (Err(body), 0),
         _ => {}
@@ -1079,6 +1068,7 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, u
 }
 
 fn parse_function_call(function: Node, tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
+    println!("parse_function_call");
     let mut idx = 1;
     let mut arguments: Vec<Node> = Vec::new();
 
@@ -1095,7 +1085,7 @@ fn parse_function_call(function: Node, tokens: &[lexer::Tok]) -> (Result<Node, e
             _ => {}
         }
 
-        idx += 1;
+        idx += incr;
         arguments.push(expr.unwrap());
 
         let err = guard_unexpected_input_end(tokens, idx);
@@ -1114,4 +1104,25 @@ fn parse_function_call(function: Node, tokens: &[lexer::Tok]) -> (Result<Node, e
         }),
         idx,
     );
+}
+
+fn guard_unexpected_input_end(tokens: &[lexer::Tok], idx: usize) -> Result<(), error::Err> {
+    if idx >= tokens.len() {
+        if tokens.len() > 0 {
+            return Err(error::Err {
+                reason: error::ERR_SYNTAX,
+                message: format!(
+                    "unexpected end of input at {}",
+                    tokens[tokens.len() - 1].string()
+                ),
+            });
+        }
+
+        return Err(error::Err {
+            reason: error::ERR_SYNTAX,
+            message: format!("unexpected end of input"),
+        });
+    }
+
+    return Ok(());
 }
