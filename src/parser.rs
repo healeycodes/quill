@@ -136,7 +136,7 @@ impl fmt::Display for Node {
             } => {
                 write!(
                     f,
-                    "Binary ({}) {:?} ({})",
+                    "Binary ({}) {} ({})",
                     left_operand, operator, right_operand
                 )
             }
@@ -226,7 +226,7 @@ pub fn parse(tokens: &Vec<lexer::Tok>, fatal_error: bool, debug_parser: bool) ->
             Err(ref e) => match e.reason {
                 error::ERR_UNKNOWN => log::log_err_f(
                     error::ERR_ASSERT,
-                    &[format!("err raised that was not of Err type -> {:?}", e)],
+                    &[format!("err raised that was not of Err type -> {}", e)],
                 ),
                 _ => {
                     if fatal_error {
@@ -475,7 +475,7 @@ fn parse_expression(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) 
         _ => {
             return (
                 Err(error::Err {
-                    message: format!("unexpected token {:?} following an expression", next_tok),
+                    message: format!("unexpected token {} following an expression", next_tok),
                     reason: error::ERR_SYNTAX,
                 }),
                 0,
@@ -677,7 +677,7 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
                         Err(error::Err {
                             reason: error::ERR_SYNTAX,
                             message: format!(
-                                "expected {:?} after composite key, found {:?}",
+                                "expected {} after composite key, found {}",
                                 lexer::Token::KeyValueSeparator,
                                 tokens[idx]
                             ),
@@ -757,7 +757,7 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
             return (
                 Err(error::Err {
                     reason: error::ERR_SYNTAX,
-                    message: format!("unexpected start of atom, found {:?}", tok),
+                    message: format!("unexpected start of atom, found {}", tok),
                 }),
                 0,
             );
@@ -838,7 +838,7 @@ fn parse_match_call(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) 
             Err(error::Err {
                 reason: error::ERR_SYNTAX,
                 message: format!(
-                    "expected {:?}, but got {:?}",
+                    "expected {}, but got {}",
                     lexer::Token::CaseArrow,
                     tokens[idx]
                 ),
@@ -888,7 +888,7 @@ fn parse_match_clause(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize
             Err(error::Err {
                 reason: error::ERR_SYNTAX,
                 message: format!(
-                    "expected {:?}, but got {:?}",
+                    "expected {}, but got {}",
                     lexer::Token::CaseArrow,
                     tokens[idx]
                 ),
@@ -964,7 +964,7 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, u
                         Err(error::Err {
                             reason: error::ERR_SYNTAX,
                             message: format!(
-                                "expected arguments in a list separated by {:?}, found {:?}",
+                                "expected arguments in a list separated by {}, found {}",
                                 lexer::Token::Separator,
                                 tokens[idx]
                             ),
@@ -987,7 +987,7 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, u
                     Err(error::Err {
                         reason: error::ERR_SYNTAX,
                         message: format!(
-                            "expected arguments list to terminate with {:?}, found {:?}",
+                            "expected arguments list to terminate with {}, found {}",
                             lexer::Token::RightParen,
                             tokens[idx]
                         ),
@@ -1015,7 +1015,7 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, u
             return (
                 Err(error::Err {
                     reason: error::ERR_SYNTAX,
-                    message: format!("malformed arguments list in function at {:?}", tok),
+                    message: format!("malformed arguments list in function at {}", tok),
                 }),
                 0,
             )
@@ -1033,7 +1033,7 @@ fn parse_function_literal(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, u
             Err(error::Err {
                 reason: error::ERR_SYNTAX,
                 message: format!(
-                    "expected {:?} but found {:?}",
+                    "expected {} but found {}",
                     lexer::Token::FunctionArrow,
                     tokens[idx]
                 ),
