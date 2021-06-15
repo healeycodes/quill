@@ -18,7 +18,7 @@ pub struct Err {
 
 impl Err {
     pub fn error(&self) -> &str {
-        return &self.message;
+        &self.message
     }
 }
 

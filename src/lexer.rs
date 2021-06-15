@@ -124,7 +124,7 @@ fn simple_commit(tok: Tok, lexer_state: &mut LexerState) {
     if lexer_state.debug_lexer {
         log::log_debug(&[String::from("lex ->"), tok.to_string()])
     }
-    *lexer_state.last_kind = tok.kind.clone();
+    *lexer_state.last_kind = tok.kind;
     lexer_state.tokens.push(tok);
 }
 
@@ -144,7 +144,7 @@ fn simple_commit_char(kind: &Kind, lexer_state: &mut LexerState) {
 }
 
 fn commit_clear(lexer_state: &mut LexerState) {
-    if lexer_state.buf == "" {
+    if lexer_state.buf.is_empty() {
         // GoInk: no need to commit empty token
         return;
     }
@@ -155,7 +155,7 @@ fn commit_clear(lexer_state: &mut LexerState) {
         "true" => simple_commit_char(&Token::TrueLiteral, lexer_state),
         "false" => simple_commit_char(&Token::FalseLiteral, lexer_state),
         _ => {
-            if cbuf.chars().nth(0).unwrap().is_digit(10) {
+            if cbuf.chars().next().unwrap().is_digit(10) {
                 let f: f64 = match cbuf.parse::<f64>() {
                     Ok(f) => f,
                     Err(err) => {
@@ -214,7 +214,7 @@ fn commit_char(kind: Kind, lexer_state: &mut LexerState) {
         Tok {
             str: String::from(""),
             num: 0.0,
-            kind: kind,
+            kind,
             position: Position {
                 line: lexer_state.line_no,
                 col: lexer_state.col_no,
@@ -253,18 +253,18 @@ fn ensure_separator(lexer_state: &mut LexerState) {
 }
 
 fn match_new_line(s: &str) -> bool {
-    return s == "\n" || s == "\r" || s == "\r\n";
+    s == "\n" || s == "\r" || s == "\r\n"
 }
 
-pub fn tokenize(tokens: &mut Vec<Tok>, source: &Vec<&str>, fatal_error: bool, debug_lexer: bool) {
+pub fn tokenize(tokens: &mut Vec<Tok>, source: &[&str], fatal_error: bool, debug_lexer: bool) {
     let lexer_state = &mut LexerState {
-        tokens: tokens,
+        tokens,
         buf: &mut String::new(),
         last_kind: &mut Token::Separator,
         line_no: 1,
         col_no: 1,
-        fatal_error: fatal_error,
-        debug_lexer: debug_lexer,
+        fatal_error,
+        debug_lexer,
     };
 
     let mut strbuf = String::new();
@@ -332,7 +332,7 @@ pub fn tokenize(tokens: &mut Vec<Tok>, source: &Vec<&str>, fatal_error: bool, de
 
             if next_char == "`" {
                 // GoInk: single-line comment, keep taking until EOL
-                while source_pos < source.len() && match_new_line(next_char) != true {
+                while source_pos < source.len() && !match_new_line(next_char) {
                     source_pos += 1;
                     next_char = source[source_pos];
                 }
@@ -401,10 +401,10 @@ pub fn tokenize(tokens: &mut Vec<Tok>, source: &Vec<&str>, fatal_error: bool, de
                 }
             }
             if !committed {
-                if lexer_state.buf == "" {
+                if lexer_state.buf.is_empty() {
                     commit_char(Token::AccessorOp, lexer_state);
                 } else {
-                    lexer_state.buf.push_str(".")
+                    lexer_state.buf.push('.')
                 }
             }
         } else if character == ":" {
