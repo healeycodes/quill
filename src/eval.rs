@@ -1,3 +1,6 @@
+use crate::error;
+use crate::lexer;
+use crate::log;
 use std::collections::HashMap;
 use std::sync::{Arc, Barrier, Mutex};
 use std::thread;
@@ -34,13 +37,31 @@ struct StackFrame {
 // in the syntax tree. Eval returns the last value of the last expression in the AST,
 // or an error if there was a runtime error.
 impl Context {
-	fn eval(&self, nodes: &[lexer::Tok], dump_frame: bool) -> Result<Value, Err> {
+	fn eval(&self, nodes: &[lexer::Tok], dump_frame: bool) {
 		self.engine.eval_lock.lock().unwrap();
 		for node in nodes.iter() {
 			let (val, err) = node.eval(self.frame, false);
 			if let Err(err) = err {
-				return (Err(err), 0);
+				self.log_err(err);
+				break;
 			}
+		}
+		if dump_frame {
+			self.dump()
+		}
+	}
+	// GoInk: log_err logs an Err (interpreter error) according to the configurations
+	// specified in the Context's Engine.
+	fn log_err(&self, e: error::Err) {
+		let mut msg = e.message;
+		if self.file != "" {
+			msg = e.message + " in " + &self.file;
+		}
+
+		if self.engine.fatal_error {
+			log::log_err(e.reason, &[msg])
+		} else {
+			log::log_safe_err(e.reason, &[msg])
 		}
 	}
 }
