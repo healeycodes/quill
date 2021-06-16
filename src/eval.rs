@@ -1,9 +1,12 @@
 use crate::error;
 use crate::lexer;
 use crate::log;
+use crate::parser;
 use std::collections::HashMap;
 use std::sync::{Arc, Barrier, Mutex};
 use std::thread;
+
+const max_print_len: i32 = 120;
 
 // GoInk: Value represents any value in the Ink programming language.
 // Each value corresponds to some primitive or object value created
@@ -37,7 +40,7 @@ struct StackFrame {
 // in the syntax tree. Eval returns the last value of the last expression in the AST,
 // or an error if there was a runtime error.
 impl Context {
-	fn eval(&self, nodes: &[lexer::Tok], dump_frame: bool) {
+	fn eval(&self, nodes: Vec<parser::Node>, dump_frame: bool) {
 		self.engine.eval_lock.lock().unwrap();
 		for node in nodes.iter() {
 			let (val, err) = node.eval(self.frame, false);
@@ -63,6 +66,26 @@ impl Context {
 		} else {
 			log::log_safe_err(e.reason, &[msg])
 		}
+	}
+
+	// GoInk: Dump prints the current state of the Context's global heap
+	fn dump(&self) {
+		log::log_debug(["frame dump", self.frame])
+	}
+}
+
+impl fmt::Display for StackFrame {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		entries := make([]string, 0, len(frame.vt))
+		for k, v := range frame.vt {
+			vstr := v.String()
+			if len(vstr) > max_print_len {
+				vstr = vstr[:max_print_len] + ".."
+			}
+			entries = append(entries, fmt.Sprintf("%s -> %s", k, vstr))
+		}
+	
+		return format!("{\n\t{}}\n} -prnt-> {}}", strings.Join(entries, "\n\t"), frame.parent)
 	}
 }
 
