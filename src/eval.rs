@@ -1,17 +1,25 @@
 use crate::error;
-use crate::lexer;
 use crate::log;
 use crate::parser;
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::{Arc, Barrier, Mutex};
 use std::thread;
 
-const max_print_len: i32 = 120;
+const max_print_len: usize = 120;
 
 // GoInk: Value represents any value in the Ink programming language.
 // Each value corresponds to some primitive or object value created
 // during the execution of an Ink program.
 enum Value {}
+
+impl Value {}
+
+impl fmt::Display for Value {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		return write!(f, "TODO");
+	}
+}
 
 // GoInk: Utility func to get a consistent, language spec-compliant
 // string representation of numbers
@@ -70,22 +78,27 @@ impl Context {
 
 	// GoInk: Dump prints the current state of the Context's global heap
 	fn dump(&self) {
-		log::log_debug(["frame dump", self.frame])
+		log::log_debug(&["frame dump".to_string(), self.frame.to_string()])
 	}
 }
 
 impl fmt::Display for StackFrame {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		entries := make([]string, 0, len(frame.vt))
-		for k, v := range frame.vt {
-			vstr := v.String()
-			if len(vstr) > max_print_len {
-				vstr = vstr[:max_print_len] + ".."
-			}
-			entries = append(entries, fmt.Sprintf("%s -> %s", k, vstr))
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let entries: Vec<String> = Vec::new();
+		for (key, val) in self.vt {
+			let vstr = val.to_string();
+			// if vstr.len() > max_print_len {
+			// 	vstr = [vstr[max_print_len..], "..".to_string()].join("")
+			// }
+			entries.push(format!("{} -> {}", key, vstr))
 		}
-	
-		return format!("{\n\t{}}\n} -prnt-> {}}", strings.Join(entries, "\n\t"), frame.parent)
+
+		return write!(
+			f,
+			"{{\n\t{}\n}} -prnt-> {}",
+			entries.join("\n\t"),
+			self.parent
+		);
 	}
 }
 
