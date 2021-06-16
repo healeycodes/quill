@@ -61,6 +61,22 @@ impl Context {
 			self.dump()
 		}
 	}
+
+	// GoInk: exec_listener queues an asynchronous callback task to the Engine behind the Context.
+	// Callbacks registered this way will also run with the Engine's execution lock.
+	fn exec_listener(&self, callback: fn()) {
+		self.engine.listeners
+		// ctx.Engine.Listeners.Add(1)
+		go func() {
+			defer ctx.Engine.Listeners.Done()
+
+			ctx.Engine.evalLock.Lock()
+			defer ctx.Engine.evalLock.Unlock()
+
+			callback()
+		}()
+	}
+
 	// GoInk: log_err logs an Err (interpreter error) according to the configurations
 	// specified in the Context's Engine.
 	fn log_err(&self, e: error::Err) {
