@@ -11,13 +11,43 @@ const max_print_len: usize = 120;
 // GoInk: Value represents any value in the Ink programming language.
 // Each value corresponds to some primitive or object value created
 // during the execution of an Ink program.
-enum Value {}
+enum Value {
+	// GoInk: EmptyValue is the value of the empty identifier.
+	// it is globally unique and matches everything in equality.
+	EmptyValue {},
+	// GoInk: NumberValue represents the number type (integer and floating point)
+	// in the Ink language.
+	NumberValue(f64),
+	// GoInk: StringValue represents all characters and strings in Ink
+	StringValue(String),
+}
 
-impl Value {}
+// impl Value {}
 
 impl fmt::Display for Value {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		return write!(f, "TODO");
+		match self {
+			Value::EmptyValue => write!(f, "_"),
+			Value::NumberValue => write!(f, "{}", nv_to_s(&self)),
+			Value::StringValue => write!(f, "'{}'", self.replace("\\", "\\\\").replace("'", "\\'")),
+			_ => write!(f, "TODO"),
+		}
+	}
+}
+
+impl PartialEq for Value {
+	fn eq(&self, other: &Self) -> bool {
+		match self {
+			Value::EmptyValue => true,
+			Value::NumberValue => {
+				if other == Value::NumberValue {
+					self == other
+				} else {
+					false
+				}
+			}
+			_ => false,
+		}
 	}
 }
 
@@ -31,6 +61,12 @@ pub fn n_to_s(f: f64) -> String {
 	}
 
 	return format!("{}", f);
+}
+
+// GoInk: n_to_s for NumberValue type
+fn nv_to_s(v: Value) -> String {
+	let n: f64 = v.parse().unwrap();
+	return n_to_s(n);
 }
 
 // GoInk: ValueTable is used anytime a map of names/labels to Ink Values is needed,
@@ -64,18 +100,18 @@ impl Context {
 
 	// GoInk: exec_listener queues an asynchronous callback task to the Engine behind the Context.
 	// Callbacks registered this way will also run with the Engine's execution lock.
-	fn exec_listener(&self, callback: fn()) {
-		self.engine.listeners
-		// ctx.Engine.Listeners.Add(1)
-		go func() {
-			defer ctx.Engine.Listeners.Done()
+	// fn exec_listener(&self, callback: fn()) {
+	// 	self.engine.listeners
+	// 	// ctx.Engine.Listeners.Add(1)
+	// 	go func() {
+	// 		defer ctx.Engine.Listeners.Done()
 
-			ctx.Engine.evalLock.Lock()
-			defer ctx.Engine.evalLock.Unlock()
+	// 		ctx.Engine.evalLock.Lock()
+	// 		defer ctx.Engine.evalLock.Unlock()
 
-			callback()
-		}()
-	}
+	// 		callback()
+	// 	}()
+	// }
 
 	// GoInk: log_err logs an Err (interpreter error) according to the configurations
 	// specified in the Context's Engine.
