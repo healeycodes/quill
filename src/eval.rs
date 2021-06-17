@@ -20,16 +20,35 @@ enum Value {
 	NumberValue(f64),
 	// GoInk: StringValue represents all characters and strings in Ink
 	StringValue(String),
+	// GoInk: BooleanValue is either `true` or `false`
+	BooleanValue(bool),
+	// GoInk: NullValue is a value that only exists at the type level,
+	// and is represented by the empty expression list `()`.
+	NullValue(u8),
+	// GoInk: CompositeValue includes all objects and list values
+	CompositeValue(ValueTable),
 }
 
-// impl Value {}
+// GoInk: The singleton Null value is interned into a single value
+const Null: Value = Value::NullValue(0);
 
 impl fmt::Display for Value {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			Value::EmptyValue => write!(f, "_"),
-			Value::NumberValue => write!(f, "{}", nv_to_s(&self)),
-			Value::StringValue => write!(f, "'{}'", self.replace("\\", "\\\\").replace("'", "\\'")),
+			Value::EmptyValue {} => write!(f, "_"),
+			Value::NumberValue(n) => write!(f, "{}", nv_to_s(*n)),
+			Value::StringValue(s) => {
+				write!(f, "'{}'", s.replace("\\", "\\\\").replace("'", "\\'"))
+			}
+			Value::BooleanValue(b) => write!(f, "{}", b),
+			Value::NullValue(_) => write!(f, "()"),
+			Value::CompositeValue(vt) => {
+				let mut entries: Vec<String> = Vec::new();
+				for (key, value) in vt {
+					entries.push(format!("{}: {}", key, value))
+				}
+				write!(f, "{{{}}}", entries.join(", "))
+			}
 			_ => write!(f, "TODO"),
 		}
 	}
@@ -37,16 +56,35 @@ impl fmt::Display for Value {
 
 impl PartialEq for Value {
 	fn eq(&self, other: &Self) -> bool {
-		match self {
-			Value::EmptyValue => true,
-			Value::NumberValue => {
-				if other == Value::NumberValue {
-					self == other
-				} else {
-					false
+		if matches!(other, Value::EmptyValue {}) {
+			true
+		} else {
+			match *self {
+				Value::EmptyValue {} => true,
+				Value::NumberValue(n) => {
+					if matches!(other, Value::NumberValue(_)) {
+						n as f64 == *other as f64
+					} else {
+						false
+					}
 				}
+				Value::BooleanValue(b) => {
+					if matches!(other, Value::BooleanValue(_)) {
+						self == other
+					} else {
+						false
+					}
+				}
+				Value::NullValue(b) => matches!(other, Value::NullValue(_)),
+				Value::CompositeValue(vt) => {
+					if matches!(other, Value::CompositeValue(_)) {
+						self == other
+					} else {
+						false
+					}
+				}
+				_ => false,
 			}
-			_ => false,
 		}
 	}
 }
@@ -64,9 +102,8 @@ pub fn n_to_s(f: f64) -> String {
 }
 
 // GoInk: n_to_s for NumberValue type
-fn nv_to_s(v: Value) -> String {
-	let n: f64 = v.parse().unwrap();
-	return n_to_s(n);
+fn nv_to_s(v: f64) -> String {
+	return n_to_s(v);
 }
 
 // GoInk: ValueTable is used anytime a map of names/labels to Ink Values is needed,
