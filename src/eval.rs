@@ -59,26 +59,33 @@ impl PartialEq for Value {
 		if matches!(other, Value::EmptyValue {}) {
 			true
 		} else {
-			match *self {
+			match &*self {
 				Value::EmptyValue {} => true,
 				Value::NumberValue(n) => {
-					if matches!(other, Value::NumberValue(_)) {
-						n as f64 == *other as f64
+					if let Value::NumberValue(o) = other {
+						*n as f64 == *o as f64
 					} else {
 						false
 					}
 				}
 				Value::BooleanValue(b) => {
-					if matches!(other, Value::BooleanValue(_)) {
-						self == other
+					if let Value::BooleanValue(o) = other {
+						*b as bool == *o as bool
 					} else {
 						false
 					}
 				}
-				Value::NullValue(b) => matches!(other, Value::NullValue(_)),
+				Value::NullValue(b) => {
+					if let Value::NullValue(o) = other {
+						true
+					} else {
+						false
+					}
+				}
 				Value::CompositeValue(vt) => {
-					if matches!(other, Value::CompositeValue(_)) {
-						self == other
+					if let Value::CompositeValue(o) = other {
+						// *vt as ValueTable == *o as ValueTable
+						
 					} else {
 						false
 					}
@@ -121,19 +128,19 @@ struct StackFrame {
 // in the syntax tree. Eval returns the last value of the last expression in the AST,
 // or an error if there was a runtime error.
 impl Context {
-	fn eval(&self, nodes: Vec<parser::Node>, dump_frame: bool) {
-		self.engine.eval_lock.lock().unwrap();
-		for node in nodes.iter() {
-			let (val, err) = node.eval(self.frame, false);
-			if let Err(err) = err {
-				self.log_err(err);
-				break;
-			}
-		}
-		if dump_frame {
-			self.dump()
-		}
-	}
+	// fn eval(&self, nodes: Vec<parser::Node>, dump_frame: bool) {
+	// 	self.engine.eval_lock.lock().unwrap();
+	// 	for node in nodes.iter() {
+	// 		let (val, err) = node.eval(self.frame, false);
+	// 		if let Err(err) = err {
+	// 			self.log_err(err);
+	// 			break;
+	// 		}
+	// 	}
+	// 	if dump_frame {
+	// 		self.dump()
+	// 	}
+	// }
 
 	// GoInk: exec_listener queues an asynchronous callback task to the Engine behind the Context.
 	// Callbacks registered this way will also run with the Engine's execution lock.
