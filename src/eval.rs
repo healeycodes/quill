@@ -33,8 +33,8 @@ enum Value {
 }
 
 struct FunctionValue {
-	defn: Box<FunctionLiteralNode>,
-	parentFrame: Box<StackFrame>,
+	defn: parser::Node, // FunctionLiteralNode
+	parentFrame: StackFrame,
 }
 
 // GoInk: The singleton Null value is interned into a single value
@@ -60,7 +60,11 @@ impl fmt::Display for Value {
 			Value::FunctionValue(f) => {
 				// GoInk: ellipsize function body at a reasonable length,
 				// so as not to be too verbose in repl environments
-				// TODO
+				let mut fstr = f.defn.to_string();
+				if fstr.len() > max_print_len {
+					fstr = [fstr[max_print_len..].to_string(), "..".to_string()].join("")
+				}
+				write!(f, "{}", fstr)
 			}
 			_ => write!(f, "TODO"),
 		}
@@ -113,6 +117,15 @@ impl PartialEq for Value {
 							}
 						}
 						true
+					} else {
+						false
+					}
+				}
+				Value::FunctionValue(f) => {
+					// GoInk: to compare structs containing slices, we really want
+					// a pointer comparison, not a value comparison
+					if let Value::FunctionValue(o) = other {
+						(*f as FunctionValue).defn == (*o as FunctionValue).defn
 					} else {
 						false
 					}
