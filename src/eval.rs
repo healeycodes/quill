@@ -27,6 +27,14 @@ enum Value {
 	NullValue(u8),
 	// GoInk: CompositeValue includes all objects and list values
 	CompositeValue(ValueTable),
+	// GoInk: FunctionValue is the value of any variables referencing functions
+	// defined in an Ink program.
+	FunctionValue(FunctionValue),
+}
+
+struct FunctionValue {
+	defn: Box<FunctionLiteralNode>,
+	parentFrame: Box<StackFrame>,
 }
 
 // GoInk: The singleton Null value is interned into a single value
@@ -48,6 +56,11 @@ impl fmt::Display for Value {
 					entries.push(format!("{}: {}", key, value))
 				}
 				write!(f, "{{{}}}", entries.join(", "))
+			}
+			Value::FunctionValue(f) => {
+				// GoInk: ellipsize function body at a reasonable length,
+				// so as not to be too verbose in repl environments
+				// TODO
 			}
 			_ => write!(f, "TODO"),
 		}
@@ -84,8 +97,22 @@ impl PartialEq for Value {
 				}
 				Value::CompositeValue(vt) => {
 					if let Value::CompositeValue(o) = other {
-						// *vt as ValueTable == *o as ValueTable
-						
+						let _vt = &*vt as &ValueTable;
+						let _o = &*o as &ValueTable;
+						if _vt.keys().len() != _o.keys().len() {
+							return false;
+						}
+						for (k, v) in _vt.iter() {
+							match _o.get(k) {
+								Some(_o_value) => {
+									if v != _o_value {
+										return false;
+									}
+								}
+								None => return false,
+							}
+						}
+						true
 					} else {
 						false
 					}
@@ -162,7 +189,7 @@ impl Context {
 	fn log_err(&self, e: error::Err) {
 		let mut msg = e.message;
 		if self.file != "" {
-			msg = e.message + " in " + &self.file;
+			msg = msg + " in " + &self.file;
 		}
 
 		if self.engine.fatal_error {
@@ -180,12 +207,12 @@ impl Context {
 
 impl fmt::Display for StackFrame {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		let entries: Vec<String> = Vec::new();
-		for (key, val) in self.vt {
-			let vstr = val.to_string();
-			// if vstr.len() > max_print_len {
-			// 	vstr = [vstr[max_print_len..], "..".to_string()].join("")
-			// }
+		let mut entries: Vec<String> = Vec::new();
+		for (key, val) in &self.vt {
+			let vstr: String = val.to_string();
+			if vstr.len() > max_print_len {
+				vstr = [vstr[max_print_len..].to_string(), "..".to_string()].join("")
+			}
 			entries.push(format!("{} -> {}", key, vstr))
 		}
 
