@@ -67,7 +67,7 @@ pub enum Token {
     RightBrace,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Position {
     pub line: i32,
     pub col: i32,

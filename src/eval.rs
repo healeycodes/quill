@@ -1,6 +1,7 @@
 use crate::error;
 use crate::log;
 use crate::parser;
+use crate::parser::Position;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, Barrier, Mutex};
@@ -30,11 +31,19 @@ enum Value {
 	// GoInk: FunctionValue is the value of any variables referencing functions
 	// defined in an Ink program.
 	FunctionValue(FunctionValue),
+	// GoInk: FunctionCallThunkValue is an internal representation of a lazy
+	// function evaluation used to implement tail call optimization.
+	FunctionCallThunkValue(FunctionCallThunkValue),
 }
 
 struct FunctionValue {
 	defn: parser::Node, // FunctionLiteralNode
 	parentFrame: StackFrame,
+}
+
+struct FunctionCallThunkValue {
+	vt: ValueTable,
+	function: FunctionValue,
 }
 
 // GoInk: The singleton Null value is interned into a single value
@@ -57,18 +66,33 @@ impl fmt::Display for Value {
 				}
 				write!(f, "{{{}}}", entries.join(", "))
 			}
-			Value::FunctionValue(f) => {
+			Value::FunctionValue(fv) => {
 				// GoInk: ellipsize function body at a reasonable length,
 				// so as not to be too verbose in repl environments
-				let mut fstr = f.defn.to_string();
+				let mut fstr = fv.defn.to_string();
 				if fstr.len() > max_print_len {
 					fstr = [fstr[max_print_len..].to_string(), "..".to_string()].join("")
 				}
 				write!(f, "{}", fstr)
+
+				// TODO: refactor to `write!(f, "{}", function_value_to_string(&fv))`
+			}
+			Value::FunctionCallThunkValue(ft) => {
+				write!(f, "Thunk of ({})", function_value_to_string(&ft.function))
 			}
 			_ => write!(f, "TODO"),
 		}
 	}
+}
+
+fn function_value_to_string(fv: &FunctionValue) -> String {
+	// GoInk: ellipsize function body at a reasonable length,
+	// so as not to be too verbose in repl environments
+	let mut fstr = fv.defn.to_string();
+	if fstr.len() > max_print_len {
+		fstr = [fstr[max_print_len..].to_string(), "..".to_string()].join("")
+	}
+	fstr
 }
 
 impl PartialEq for Value {
@@ -125,7 +149,7 @@ impl PartialEq for Value {
 					// GoInk: to compare structs containing slices, we really want
 					// a pointer comparison, not a value comparison
 					if let Value::FunctionValue(o) = other {
-						(*f as FunctionValue).defn == (*o as FunctionValue).defn
+						(*f as FunctionValue).defn.pos() == (*o as FunctionValue).defn.pos()
 					} else {
 						false
 					}
@@ -222,7 +246,7 @@ impl fmt::Display for StackFrame {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		let mut entries: Vec<String> = Vec::new();
 		for (key, val) in &self.vt {
-			let vstr: String = val.to_string();
+			let mut vstr: String = val.to_string();
 			if vstr.len() > max_print_len {
 				vstr = [vstr[max_print_len..].to_string(), "..".to_string()].join("")
 			}

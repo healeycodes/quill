@@ -73,7 +73,7 @@ pub enum Node {
     },
 }
 
-trait Position {
+pub trait Position {
     fn pos(&self) -> lexer::Position;
 }
 
