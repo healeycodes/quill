@@ -67,15 +67,7 @@ impl fmt::Display for Value {
 				write!(f, "{{{}}}", entries.join(", "))
 			}
 			Value::FunctionValue(fv) => {
-				// GoInk: ellipsize function body at a reasonable length,
-				// so as not to be too verbose in repl environments
-				let mut fstr = fv.defn.to_string();
-				if fstr.len() > max_print_len {
-					fstr = [fstr[max_print_len..].to_string(), "..".to_string()].join("")
-				}
-				write!(f, "{}", fstr)
-
-				// TODO: refactor to `write!(f, "{}", function_value_to_string(&fv))`
+				write!(f, "{}", function_value_to_string(&fv))
 			}
 			Value::FunctionCallThunkValue(ft) => {
 				write!(f, "Thunk of ({})", function_value_to_string(&ft.function))
@@ -149,7 +141,18 @@ impl PartialEq for Value {
 					// GoInk: to compare structs containing slices, we really want
 					// a pointer comparison, not a value comparison
 					if let Value::FunctionValue(o) = other {
-						(*f as FunctionValue).defn.pos() == (*o as FunctionValue).defn.pos()
+						// Position _should_ be unique
+						f.defn.pos() == o.defn.pos()
+					} else {
+						false
+					}
+				}
+				Value::FunctionCallThunkValue(ft) => {
+					// GoInk: to compare structs containing slices, we really want
+					// a pointer comparison, not a value comparison
+					if let Value::FunctionCallThunkValue(o) = other {
+						// Position _should_ be unique
+						ft.vt == o.vt && ft.function.defn.pos() == o.function.defn.pos()
 					} else {
 						false
 					}
@@ -187,6 +190,25 @@ struct StackFrame {
 	parent: Box<StackFrame>,
 	vt: ValueTable,
 }
+
+// unwrapThunk expands out a recursive structure of thunks
+// 	into a flat for loop control structure
+// fn unwrap_thunk(thunk: FunctionCallThunkValue) -> Result<(), error::Err> {
+// 	let mut is_thunk = true;
+// 	while is_thunk {
+// 		let frame = &StackFrame{
+// 			parent: thunk.function.parent_frame,
+// 			vt:     thunk.vt,
+// 		};
+// 		let (v, err) = thunk.function.defn.body.Eval(frame, true)
+//         if let Err(err) = err {
+//             return (Err(err), 0);
+//         }
+// 		let (thunk, is_thunk) = v.(FunctionCallThunkValue)
+// 	}
+
+// 	return
+// }
 
 // GoInk: Eval takes a channel of Nodes to evaluate, and executes the Ink programs defined
 // in the syntax tree. Eval returns the last value of the last expression in the AST,
