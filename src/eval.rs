@@ -1,7 +1,6 @@
 use crate::error;
 use crate::log;
 use crate::parser;
-use crate::parser::Position;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, Barrier, Mutex};
@@ -163,6 +162,19 @@ impl PartialEq for Value {
 	}
 }
 
+impl parser::Node {
+	fn eval(&self, frame: &StackFrame, allow_thunk: bool) -> Result<Value, error::Err> {
+		if matches!(self, parser::Node::EmptyIdentifierNode { .. }) {
+			Ok(Value::EmptyValue {})
+		} else {
+			match &*self {
+				parser::Node::NumberLiteralNode { val, .. } => Ok(Value::NumberValue(*val)),
+				_ => Ok(Value::EmptyValue {}),
+			}
+		}
+	}
+}
+
 // GoInk: Utility func to get a consistent, language spec-compliant
 // string representation of numbers
 pub fn n_to_s(f: f64) -> String {
@@ -214,19 +226,19 @@ struct StackFrame {
 // in the syntax tree. Eval returns the last value of the last expression in the AST,
 // or an error if there was a runtime error.
 impl Context {
-	// fn eval(&self, nodes: Vec<parser::Node>, dump_frame: bool) {
-	// 	self.engine.eval_lock.lock().unwrap();
-	// 	for node in nodes.iter() {
-	// 		let (val, err) = node.eval(self.frame, false);
-	// 		if let Err(err) = err {
-	// 			self.log_err(err);
-	// 			break;
-	// 		}
-	// 	}
-	// 	if dump_frame {
-	// 		self.dump()
-	// 	}
-	// }
+	fn eval(&self, nodes: Vec<parser::Node>, dump_frame: bool) {
+		self.engine.eval_lock.lock().unwrap();
+		for node in nodes.iter() {
+			let val = node.eval(&self.frame, false);
+			if let Err(err) = val {
+				self.log_err(err);
+				break;
+			}
+		}
+		if dump_frame {
+			self.dump()
+		}
+	}
 
 	// GoInk: exec_listener queues an asynchronous callback task to the Engine behind the Context.
 	// Callbacks registered this way will also run with the Engine's execution lock.

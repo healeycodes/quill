@@ -73,12 +73,8 @@ pub enum Node {
     },
 }
 
-pub trait Position {
-    fn pos(&self) -> lexer::Position;
-}
-
-impl Position for Node {
-    fn pos(&self) -> lexer::Position {
+impl Node {
+    pub fn pos(&self) -> lexer::Position {
         match self {
             Node::UnaryExprNode { position, .. } => *position,
             Node::MatchClauseNode { target, .. } => target.pos(),
@@ -236,7 +232,7 @@ macro_rules! guard_unexpected_input_end {
 // GoInk: Parse transforms a list of Tok (tokens) to Node (AST nodes).
 // This implementation uses recursive descent parsing.
 pub fn parse(tokens: &[lexer::Tok], fatal_error: bool, debug_parser: bool) -> Vec<&Node> {
-    let nodes: Vec<&Node> = Vec::new();
+    let mut nodes: Vec<&Node> = Vec::new();
     let mut idx = 0;
 
     while idx < tokens.len() {
@@ -268,6 +264,8 @@ pub fn parse(tokens: &[lexer::Tok], fatal_error: bool, debug_parser: bool) -> Ve
         if debug_parser {
             log::log_debug(&[format!("parse -> {}", expr.unwrap())])
         }
+        // TODO
+        // nodes.push(&expr.unwrap())
     }
 
     nodes
