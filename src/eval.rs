@@ -12,7 +12,7 @@ use std::thread;
 
 use unicode_segmentation::UnicodeSegmentation;
 
-const max_print_len: usize = 120;
+const MAX_PRINT_LEN: usize = 120;
 
 // GoInk: Value represents any value in the Ink programming language.
 // Each value corresponds to some primitive or object value created
@@ -55,7 +55,7 @@ struct FunctionCallThunkValue {
 }
 
 // GoInk: The singleton Null value is interned into a single value
-const Null: Value = Value::NullValue(0);
+const NULL: Value = Value::NullValue(0);
 
 impl fmt::Display for Value {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -89,8 +89,8 @@ fn function_value_to_string(fv: &FunctionValue) -> String {
 	// GoInk: ellipsize function body at a reasonable length,
 	// so as not to be too verbose in repl environments
 	let mut fstr = fv.defn.to_string();
-	if fstr.len() > max_print_len {
-		fstr = [fstr[max_print_len..].to_string(), "..".to_string()].join("")
+	if fstr.len() > MAX_PRINT_LEN {
+		fstr = [fstr[MAX_PRINT_LEN..].to_string(), "..".to_string()].join("")
 	}
 	fstr
 }
@@ -173,11 +173,39 @@ impl PartialEq for Value {
 
 impl parser::Node {
 	fn eval(&self, frame: &StackFrame, allow_thunk: bool) -> Result<Value, error::Err> {
-		println!("{}", self	);
 		if matches!(self, parser::Node::EmptyIdentifierNode { .. }) {
 			Ok(Value::EmptyValue {})
 		} else {
 			match &*self {
+				parser::Node::UnaryExprNode {
+					operator,
+					operand,
+					position,
+					..
+				} => {
+					let operand = operand.eval(frame, false);
+					if let Err(err) = operand {
+						return Err(err);
+					}
+					let _operand = operand.unwrap();
+					match _operand {
+						Value::NumberValue(n) => return Ok(Value::NumberValue(-n)),
+						Value::BooleanValue(b) => return Ok(Value::BooleanValue(!b)),
+						_ => return Err(error::Err {
+							reason: error::ERR_RUNTIME,
+							message: format!(
+								"cannot negate non-boolean and non-number value {} [{}]",
+								_operand, position
+							),
+						}),
+					};
+					let assert_err = error::Err {
+						reason: error::ERR_ASSERT,
+						message: format!("unrecognized unary operator {}", &*self),
+					};
+					log::log_err_f(assert_err.reason, &[assert_err.message]);
+					Err(assert_err)
+				}
 				parser::Node::NumberLiteralNode { val, .. } => Ok(Value::NumberValue(*val)),
 				_ => Ok(Value::EmptyValue {}),
 			}
@@ -364,8 +392,8 @@ impl fmt::Display for StackFrame {
 		let mut entries: Vec<String> = Vec::new();
 		for (key, val) in &self.vt {
 			let mut vstr: String = val.to_string();
-			if vstr.len() > max_print_len {
-				vstr = [vstr[max_print_len..].to_string(), "..".to_string()].join("")
+			if vstr.len() > MAX_PRINT_LEN {
+				vstr = [vstr[MAX_PRINT_LEN..].to_string(), "..".to_string()].join("")
 			}
 			entries.push(format!("{} -> {}", key, vstr))
 		}

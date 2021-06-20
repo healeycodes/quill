@@ -394,7 +394,7 @@ pub fn tokenize(tokens: &mut Vec<Tok>, source: &[&str], fatal_error: bool, debug
             // that context.
             let mut committed = false;
             for c in lexer_state.buf.chars() {
-                if c.is_digit(10) {
+                if !c.is_digit(10) {
                     commit_char(Token::AccessorOp, lexer_state);
                     committed = true;
                     break;
