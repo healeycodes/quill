@@ -231,8 +231,8 @@ macro_rules! guard_unexpected_input_end {
 
 // GoInk: Parse transforms a list of Tok (tokens) to Node (AST nodes).
 // This implementation uses recursive descent parsing.
-pub fn parse(tokens: &[lexer::Tok], fatal_error: bool, debug_parser: bool) -> Vec<&Node> {
-    let mut nodes: Vec<&Node> = Vec::new();
+pub fn parse(tokens: &[lexer::Tok], fatal_error: bool, debug_parser: bool) -> Vec<Node> {
+    let mut nodes: Vec<Node> = Vec::new();
     let mut idx = 0;
 
     while idx < tokens.len() {
@@ -259,13 +259,14 @@ pub fn parse(tokens: &[lexer::Tok], fatal_error: bool, debug_parser: bool) -> Ve
                     }
                 }
             }
+            return vec![];
         }
+        let _expr = expr.unwrap();
 
         if debug_parser {
-            log::log_debug(&[format!("parse -> {}", expr.unwrap())])
+            log::log_debug(&[format!("parse -> {}", &_expr)])
         }
-        // TODO
-        // nodes.push(&expr.unwrap())
+        nodes.push(_expr)
     }
 
     nodes

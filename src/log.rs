@@ -28,7 +28,7 @@ pub fn log_debug(messages: &[String]) {
 // 	LogInteractive(fmt.Sprintf(s, args...))
 // }
 
-// GoInk: LogSafeErr is like LogErr, but does not immediately exit the interpreter
+// GoInk: log_safe_err is like log_err, but does not immediately exit the interpreter
 pub fn log_safe_err(reason: i32, messages: &[String]) {
     let err_str = match reason {
         error::ERR_SYNTAX => String::from("syntax error"),
