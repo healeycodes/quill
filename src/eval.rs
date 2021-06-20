@@ -191,13 +191,15 @@ impl parser::Node {
 					match _operand {
 						Value::NumberValue(n) => return Ok(Value::NumberValue(-n)),
 						Value::BooleanValue(b) => return Ok(Value::BooleanValue(!b)),
-						_ => return Err(error::Err {
-							reason: error::ERR_RUNTIME,
-							message: format!(
-								"cannot negate non-boolean and non-number value {} [{}]",
-								_operand, position
-							),
-						}),
+						_ => {
+							return Err(error::Err {
+								reason: error::ERR_RUNTIME,
+								message: format!(
+									"cannot negate non-boolean and non-number value {} [{}]",
+									_operand, position
+								),
+							})
+						}
 					};
 					let assert_err = error::Err {
 						reason: error::ERR_ASSERT,
@@ -205,6 +207,28 @@ impl parser::Node {
 					};
 					log::log_err_f(assert_err.reason, &[assert_err.message]);
 					Err(assert_err)
+				}
+				parser::Node::BinaryExprNode {
+					operator,
+					left_operand,
+					right_operand,
+					position,
+					..
+				} => {
+					if matches!(operator, lexer::Token::DefineOp) {
+						if let parser::Node::IdentifierNode(lo) = left_operand {
+							if let parser::Node::EmptyIdentifierNode(ro) = right_operand {
+								return Err(error::Err {
+									reason: error::ERR_RUNTIME,
+									message: format!(
+										"cannot assign an empty identifier value to {} [{}]",
+										lo,
+										lo.pos()
+									),
+								});
+							}
+						}
+					}
 				}
 				parser::Node::NumberLiteralNode { val, .. } => Ok(Value::NumberValue(*val)),
 				_ => Ok(Value::EmptyValue {}),
