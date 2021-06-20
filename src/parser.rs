@@ -261,8 +261,8 @@ pub fn parse(tokens: &[lexer::Tok], fatal_error: bool, debug_parser: bool) -> Ve
             }
             return vec![];
         }
+        
         let _expr = expr.unwrap();
-
         if debug_parser {
             log::log_debug(&[format!("parse -> {}", &_expr)])
         }

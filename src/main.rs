@@ -3,23 +3,32 @@ mod eval;
 mod lexer;
 mod log;
 mod parser;
-
+use std::collections::HashMap;
 use std::env;
-use std::fs;
-use std::str;
-
-use unicode_segmentation::UnicodeSegmentation;
+use std::sync::{Arc, Barrier, Mutex};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let filename = &args[1];
+    let file_path = &args[1];
+    let eng = eval::Engine {
+        listeners: Arc::new(Barrier::new(0)),
+        fatal_error: false,
+        permissions: eval::PermissionsConfig {
+            read: true,
+            write: true,
+            net: true,
+            exec: true,
+        },
+        debug: eval::DebugConfig {
+            lex: true,
+            parse: true,
+            dump: true,
+        },
+        eval_lock: Mutex::new(0),
+        contexts: HashMap::new(),
+    };
+    let mut ctx = eng.create_context();
+    let result = ctx.exec_path(file_path.to_string());
 
-    let file_bytes = fs::read(filename).unwrap_or_else(|_| panic!("Couldn't read {}", &args[1]));
-    let file_utf8 = str::from_utf8(&file_bytes).unwrap();
-    let file_unicode = UnicodeSegmentation::graphemes(file_utf8, true).collect::<Vec<&str>>();
-
-    let tokens: &mut Vec<lexer::Tok> = &mut Vec::new();
-    lexer::tokenize(tokens, &file_unicode, true, true);
-    let ast_nodes = parser::parse(tokens, true, true);
-    println!("{}", ast_nodes.len());
+    println!("{:?}", result);
 }

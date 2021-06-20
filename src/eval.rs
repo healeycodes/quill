@@ -1,17 +1,24 @@
 use crate::error;
+use crate::lexer;
 use crate::log;
 use crate::parser;
 use std::collections::HashMap;
 use std::fmt;
+use std::fs;
+use std::io;
+use std::str;
 use std::sync::{Arc, Barrier, Mutex};
 use std::thread;
+
+use unicode_segmentation::UnicodeSegmentation;
 
 const max_print_len: usize = 120;
 
 // GoInk: Value represents any value in the Ink programming language.
 // Each value corresponds to some primitive or object value created
 // during the execution of an Ink program.
-enum Value {
+#[derive(Debug)]
+pub enum Value {
 	// GoInk: EmptyValue is the value of the empty identifier.
 	// it is globally unique and matches everything in equality.
 	EmptyValue {},
@@ -35,11 +42,13 @@ enum Value {
 	FunctionCallThunkValue(FunctionCallThunkValue),
 }
 
+#[derive(Debug)]
 struct FunctionValue {
 	defn: parser::Node, // FunctionLiteralNode
-	parentFrame: StackFrame,
+	parent_frame: StackFrame,
 }
 
+#[derive(Debug)]
 struct FunctionCallThunkValue {
 	vt: ValueTable,
 	function: FunctionValue,
@@ -164,6 +173,7 @@ impl PartialEq for Value {
 
 impl parser::Node {
 	fn eval(&self, frame: &StackFrame, allow_thunk: bool) -> Result<Value, error::Err> {
+		println!("{}", self	);
 		if matches!(self, parser::Node::EmptyIdentifierNode { .. }) {
 			Ok(Value::EmptyValue {})
 		} else {
@@ -198,9 +208,10 @@ type ValueTable = HashMap<String, Value>;
 
 // GoInk: StackFrame represents the heap of variables local to a particular function call frame,
 // and recursively references other parent StackFrames internally.
+#[derive(Debug)]
 struct StackFrame {
-	parent: Box<StackFrame>,
-	vt: ValueTable,
+	pub parent: Option<Box<StackFrame>>,
+	pub vt: ValueTable,
 }
 
 // unwrapThunk expands out a recursive structure of thunks
@@ -222,22 +233,53 @@ struct StackFrame {
 // 	return
 // }
 
-// GoInk: Eval takes a channel of Nodes to evaluate, and executes the Ink programs defined
-// in the syntax tree. Eval returns the last value of the last expression in the AST,
+impl Engine<'_> {
+	// GoInk: create_contex creates and initializes a new Context tied to a given Engine.
+	pub fn create_context(&self) -> Context {
+		let ctx = Context {
+			cwd: String::new(),
+			file: String::new(),
+			engine: self,
+			frame: StackFrame {
+				parent: Option::None,
+				vt: HashMap::new(),
+			},
+		};
+
+		// If first time creating Context in this Engine,
+		// initialize the Contexts map
+		// TODO: how to check if HashMap is initialized in rust?
+		// if eng.contexts == nil {
+		// eng.contexts = HashMap::new();
+		// }
+
+		// ctx.reset_wd()
+		// ctx.load_environment()
+
+		ctx
+	}
+}
+
+// GoInk: eval takes a channel of Nodes to evaluate, and executes the Ink programs defined
+// in the syntax tree. eval returns the last value of the last expression in the AST,
 // or an error if there was a runtime error.
-impl Context {
-	fn eval(&self, nodes: Vec<parser::Node>, dump_frame: bool) {
+impl Context<'_> {
+	fn eval(&self, nodes: Vec<parser::Node>, dump_frame: bool) -> Value {
 		self.engine.eval_lock.lock().unwrap();
+		let mut result = Value::EmptyValue {};
 		for node in nodes.iter() {
 			let val = node.eval(&self.frame, false);
 			if let Err(err) = val {
 				self.log_err(err);
 				break;
+			} else {
+				result = val.unwrap()
 			}
 		}
 		if dump_frame {
 			self.dump()
 		}
+		result
 	}
 
 	// GoInk: exec_listener queues an asynchronous callback task to the Engine behind the Context.
@@ -270,9 +312,50 @@ impl Context {
 		}
 	}
 
-	// GoInk: Dump prints the current state of the Context's global heap
+	// GoInk: dump prints the current state of the Context's global heap
 	fn dump(&self) {
 		log::log_debug(&["frame dump".to_string(), self.frame.to_string()])
+	}
+
+	// GoInk: exec runs an Ink program.
+	// This is the main way to invoke Ink programs from Go.
+	// exec blocks until the Ink program exits.
+	pub fn exec(&self, source: &[&str]) -> Result<Value, error::Err> {
+		let eng = self.engine;
+
+		let tokens: &mut Vec<lexer::Tok> = &mut Vec::new();
+		lexer::tokenize(tokens, source, true, true);
+		let nodes = parser::parse(tokens, true, true);
+
+		// TODO: surely tokenizing or parsing can cause errors we should raise
+		return Ok(self.eval(nodes, eng.debug.dump));
+	}
+
+	// GoInk: exec_path is a convenience function to exec() a program file in a given Context.
+	pub fn exec_path(&mut self, file_path: String) -> Result<Value, error::Err> {
+		// update cwd for any potential load() calls this file will make
+		// self.cwd = path.dir(file_path);
+		self.file = file_path;
+
+		// TODO: add a 'could not open' log message
+		let file_bytes = fs::read(self.file.clone());
+		if let Err(err) = file_bytes {
+			let system_err = error::Err {
+				reason: error::ERR_SYNTAX,
+				message: format!(
+					"could not open {} for execution:\n\t-> {}",
+					self.file.clone(),
+					err
+				),
+			};
+			log::log_safe_err(system_err.reason, &[system_err.message.clone()]);
+			return Err(system_err);
+		}
+		let _file_bytes = file_bytes.unwrap();
+		let file_utf8 = str::from_utf8(&_file_bytes).unwrap();
+		let file_unicode = UnicodeSegmentation::graphemes(file_utf8, true).collect::<Vec<&str>>();
+
+		self.exec(&file_unicode)
 	}
 }
 
@@ -291,7 +374,7 @@ impl fmt::Display for StackFrame {
 			f,
 			"{{\n\t{}\n}} -prnt-> {}",
 			entries.join("\n\t"),
-			self.parent
+			"" // TODO: self.parent
 		);
 	}
 }
@@ -304,53 +387,53 @@ impl fmt::Display for StackFrame {
 //
 // Within an Engine, there may exist multiple Contexts that each contain different
 // execution environments, running concurrently under a single lock.
-struct Engine {
+pub struct Engine<'a> {
 	// Listeners keeps track of the concurrent threads of execution running
 	// in the Engine. Call `Engine.listeners.wait()` to block until all concurrent
 	// execution threads finish on an Engine.
-	listeners: Arc<Barrier>,
+	pub listeners: Arc<Barrier>,
 
 	// If fatal_error is true, an error will halt the interpreter
-	fatal_error: bool,
-	permissions: PermissionsConfig,
-	debug: DebugConfig,
+	pub fatal_error: bool,
+	pub permissions: PermissionsConfig,
+	pub debug: DebugConfig,
 
 	// Ink de-duplicates imported source files here, where
 	// Contexts from imports are deduplicated keyed by the
 	// canonicalized import path. This prevents recursive
 	// imports from crashing the interpreter and allows other
 	// nice functionality.
-	contexts: HashMap<String, Context>,
+	pub contexts: HashMap<String, &'a Context<'a>>,
 
 	// Only a single function may write to the stack frames
 	// at any moment.
-	eval_lock: Mutex<i32>,
+	pub eval_lock: Mutex<i32>,
 }
 
 // GoInk: Context represents a single, isolated execution context with its global heap,
 // imports, call stack, and cwd (working directory).
-struct Context {
+pub struct Context<'a> {
 	// cwd is an always-absolute path to current working dir (of module system)
 	cwd: String,
 	// currently executing file's path, if any
 	file: String,
-	engine: Engine,
+	engine: &'a Engine<'a>,
 	// frame represents the Context's global heap
 	frame: StackFrame,
 }
 
 // GoInk: PermissionsConfig defines Context's permissions to
 // operating system interfaces
-struct PermissionsConfig {
-	read: bool,
-	write: bool,
-	net: bool,
-	exec: bool,
+pub struct PermissionsConfig {
+	pub read: bool,
+	pub write: bool,
+	pub net: bool,
+	pub exec: bool,
 }
 
 // GoInk: DebugConfig defines any debugging flags referenced at runtime
-struct DebugConfig {
-	Lex: bool,
-	Parse: bool,
-	Dump: bool,
+pub struct DebugConfig {
+	pub lex: bool,
+	pub parse: bool,
+	pub dump: bool,
 }

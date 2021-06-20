@@ -10,7 +10,7 @@ pub const ERR_ASSERT: i32 = 100;
 
 // GoInk: Err constants represent possible errors that Ink interpreter
 // binding functions may return.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Err {
     pub reason: i32,
     pub message: String,
