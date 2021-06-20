@@ -30,5 +30,5 @@ fn main() {
     let mut ctx = eng.create_context();
     let result = ctx.exec_path(file_path.to_string());
 
-    println!("{:?}", result);
+    println!("{}", result.unwrap());
 }
