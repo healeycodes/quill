@@ -301,11 +301,11 @@ fn eval_binary(
 										left_string.push(*r)
 									}
 								}
-								frame.up(val);
+								frame.up(val, Value::StringValue(left_string));
 								return Ok(Value::StringValue(left_string));
 							} else if rn == left_string.len() {
 								left_string.append(&mut right_string);
-								frame.up(val, left_string);
+								frame.up(val, Value::StringValue(left_string));
 								return Ok(Value::StringValue(left_string));
 							} else {
 								return Err(error::Err {
@@ -325,7 +325,7 @@ fn eval_binary(
 									"cannot set part of string to a non-character {}",
 									right_value
 								),
-							})
+							});
 						}
 					} else {
 						return Err(error::Err {
@@ -410,13 +410,15 @@ fn eval_binary(
 						return Ok(Value::BooleanValue(left || right));
 					}
 				}
-				_ => return Err(error::Err {
-					reason: error::ERR_RUNTIME,
-					message: format!(
-						"values {} and {} do not support addition [{}]",
-						left_value, right_value, operator
-					),
-				}),
+				_ => {
+					return Err(error::Err {
+						reason: error::ERR_RUNTIME,
+						message: format!(
+							"values {} and {} do not support addition [{}]",
+							left_value, right_value, operator
+						),
+					})
+				}
 			}
 		}
 		lexer::Token::SubtractOp => {
@@ -826,8 +828,20 @@ struct StackFrame {
 // }
 
 impl StackFrame {
+	// GoInk: Set a value to the most recent call stack frame
 	fn set(&self, name: String, val: Value) {
-		self.vt["name"] = val
+		self.vt.insert(name, val);
+	}
+	// GoInk: Up updates a value in the stack frame chain
+	fn up(&self, name: String, val: Value) {
+		let mut frame: Option<&StackFrame> = Some(self);
+		if self.vt.contains_key(&name) {
+			self.vt.insert(name, val);
+			return;
+		}
+		if let Some(parent) = self.parent {
+			parent.up(name, val)
+		}
 	}
 }
 
