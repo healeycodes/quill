@@ -2,13 +2,13 @@ use crate::error;
 use crate::lexer;
 use crate::log;
 use crate::parser;
-use std::collections::HashMap;
-use std::fmt;
-use std::fs;
-use std::io;
-use std::str;
-use std::sync::{Arc, Barrier, Mutex};
-use std::thread;
+use std::{
+	cmp,
+	collections::HashMap,
+	fmt, fs, io, str,
+	sync::{Arc, Barrier, Mutex},
+	thread,
+};
 
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -319,7 +319,7 @@ fn eval_binary(
 								});
 							}
 						} else {
-							Err(error::Err {
+							return Err(error::Err {
 								reason: error::ERR_RUNTIME,
 								message: format!(
 									"cannot set part of string to a non-character {}",
@@ -392,25 +392,25 @@ fn eval_binary(
 	match operator {
 		lexer::Token::AddOp => {
 			match left_value {
-				Value::NumberValue(ln) => {
-					if let Value::NumberValue(rn) = right_value {
-						return Ok(Value::NumberValue(ln + rn));
+				Value::NumberValue(left) => {
+					if let Value::NumberValue(right) = right_value {
+						return Ok(Value::NumberValue(left + right));
 					}
 				}
-				Value::StringValue(ls) => {
-					if let Value::StringValue(rs) = right_value {
+				Value::StringValue(left) => {
+					if let Value::StringValue(right) = right_value {
 						// GoInk: In this context, strings are immutable. i.e. concatenating
 						// strings should produce a completely new string whose modifications
 						// won't be observable by the original strings.
-						return Ok(Value::StringValue([ls, rs].concat()));
+						return Ok(Value::StringValue([left, right].concat()));
 					}
 				}
-				Value::BooleanValue(lb) => {
-					if let Value::BooleanValue(rb) = right_value {
-						return Ok(Value::BooleanValue(lb || rb));
+				Value::BooleanValue(left) => {
+					if let Value::BooleanValue(right) = right_value {
+						return Ok(Value::BooleanValue(left || right));
 					}
 				}
-				_ => Err(error::Err {
+				_ => return Err(error::Err {
 					reason: error::ERR_RUNTIME,
 					message: format!(
 						"values {} and {} do not support addition [{}]",
@@ -420,9 +420,9 @@ fn eval_binary(
 			}
 		}
 		lexer::Token::SubtractOp => {
-			if let Value::NumberValue(ln) = left_value {
-				if let Value::NumberValue(rn) = right_value {
-					return Ok(Value::NumberValue(ln - rn));
+			if let Value::NumberValue(left) = left_value {
+				if let Value::NumberValue(right) = right_value {
+					return Ok(Value::NumberValue(left - right));
 				}
 			}
 			return Err(error::Err {
@@ -435,14 +435,14 @@ fn eval_binary(
 		}
 		lexer::Token::MultiplyOp => {
 			match left_value {
-				Value::NumberValue(ln) => {
-					if let Value::NumberValue(rn) = right_value {
-						return Ok(Value::NumberValue(ln * rn));
+				Value::NumberValue(left) => {
+					if let Value::NumberValue(right) = right_value {
+						return Ok(Value::NumberValue(left * right));
 					}
 				}
-				Value::BooleanValue(lb) => {
-					if let Value::BooleanValue(rb) = right_value {
-						return Ok(Value::BooleanValue(lb && rb));
+				Value::BooleanValue(left) => {
+					if let Value::BooleanValue(right) = right_value {
+						return Ok(Value::BooleanValue(left && right));
 					}
 				}
 			}
@@ -455,15 +455,15 @@ fn eval_binary(
 			});
 		}
 		lexer::Token::DivideOp => {
-			if let Value::NumberValue(lv) = left_value {
-				if let Value::NumberValue(rv) = right_value {
-					if right == 0 {
+			if let Value::NumberValue(left) = left_value {
+				if let Value::NumberValue(right) = right_value {
+					if right == 0.0 {
 						return Err(error::Err {
 							reason: error::ERR_RUNTIME,
 							message: format!("division by zero error [{}]", right_operand.pos()),
 						});
 					}
-					return Ok(Value::NumberValue(lv / rv));
+					return Ok(Value::NumberValue(left / right));
 				}
 			}
 			return Err(error::Err {
@@ -475,9 +475,9 @@ fn eval_binary(
 			});
 		}
 		lexer::Token::ModulusOp => {
-			if let Value::NumberValue(lv) = left_value {
-				if let Value::NumberValue(rv) = right_value {
-					if rv == 0.0 {
+			if let Value::NumberValue(left) = left_value {
+				if let Value::NumberValue(right) = right_value {
+					if right == 0.0 {
 						return Err(error::Err {
 							reason: error::ERR_RUNTIME,
 							message: format!(
@@ -486,14 +486,14 @@ fn eval_binary(
 							),
 						});
 					}
-					if is_intable(Value::NumberValue(rv)) {
-						return Ok(Value::NumberValue(lv % rv));
+					if is_intable(Value::NumberValue(right)) {
+						return Ok(Value::NumberValue(left % right));
 					}
 					return Err(error::Err {
 						reason: error::ERR_RUNTIME,
 						message: format!(
 							"cannot take modulus of non-integer value {} [{}]",
-							nv_to_s(rv),
+							nv_to_s(right),
 							left_operand.pos()
 						),
 					});
@@ -509,29 +509,208 @@ fn eval_binary(
 				),
 			});
 		}
-		lexer::Token::LogicalAndOp => match left_value {
-			Value::NumberValue(ln) => {
-				if let Value::NumberValue(rn) = right_value {
-					if is_intable(Value::NumberValue(ln)) && is_intable(Value::NumberValue(rn)) {
-						return Value::NumberValue(ln as i64 & rn as i64);
-					}
+		lexer::Token::LogicalAndOp => {
+			match left_value {
+				Value::NumberValue(left) => {
+					if let Value::NumberValue(right) = right_value {
+						if is_intable(Value::NumberValue(left))
+							&& is_intable(Value::NumberValue(right))
+						{
+							return Ok(Value::NumberValue((left as i64 & right as i64) as f64));
+						}
 
-					return Err(error::Err {
-						reason: error::ERR_RUNTIME,
-						message: format!(
-							"cannot take logical & of non-integer values {}, {} [{}]",
-							nv_to_s(rn),
-							nv_to_s(ln),
-							right_operand.pos()
-						),
-					});
+						return Err(error::Err {
+							reason: error::ERR_RUNTIME,
+							message: format!(
+								"cannot take logical & of non-integer values {}, {} [{}]",
+								nv_to_s(right),
+								nv_to_s(left),
+								right_operand.pos()
+							),
+						});
+					}
+				}
+				Value::StringValue(left) => {
+					if let Value::StringValue(right) = right_value {
+						let max = max_len(left, right);
+						let a = zero_extend(left, max);
+						let b = zero_extend(right, max);
+						let c: Vec<u8> = Vec::new();
+						for i in 0..max {
+							c[i] = a[i] & b[i]
+						}
+						return Ok(Value::StringValue(c));
+					}
+				}
+				Value::BooleanValue(left) => {
+					if let Value::BooleanValue(right) = right_value {
+						return Ok(Value::BooleanValue(left && right));
+					}
 				}
 			}
-			Value::StringValue(ls) => {
-				// TODO next
+			return Err(error::Err {
+				reason: error::ERR_RUNTIME,
+				message: format!(
+					"values {} and {} do not support bitwise or logical & [{}]",
+					left_value,
+					right_value,
+					right_operand.pos()
+				),
+			});
+		}
+		lexer::Token::LogicalOrOp => {
+			match left_value {
+				Value::NumberValue(left) => {
+					if let Value::NumberValue(right) = right_value {
+						if is_intable(Value::NumberValue(left))
+							&& is_intable(Value::NumberValue(right))
+						{
+							return Ok(Value::NumberValue((left as i64 | right as i64) as f64));
+						}
+
+						return Err(error::Err {
+							reason: error::ERR_RUNTIME,
+							message: format!(
+								"cannot take logical | of non-integer values {}, {} [{}]",
+								nv_to_s(right),
+								nv_to_s(left),
+								right_operand.pos()
+							),
+						});
+					}
+				}
+				Value::StringValue(left) => {
+					if let Value::StringValue(right) = right_value {
+						let max = max_len(left, right);
+						let a = zero_extend(left, max);
+						let b = zero_extend(right, max);
+						let c: Vec<u8> = Vec::new();
+						for i in 0..max {
+							c[i] = a[i] | b[i]
+						}
+						return Ok(Value::StringValue(c));
+					}
+				}
+				Value::BooleanValue(left) => {
+					if let Value::BooleanValue(right) = right_value {
+						return Ok(Value::BooleanValue(left || right));
+					}
+				}
 			}
-		},
+			return Err(error::Err {
+				reason: error::ERR_RUNTIME,
+				message: format!(
+					"values {} and {} do not support bitwise or logical | [{}]",
+					left_value,
+					right_value,
+					right_operand.pos()
+				),
+			});
+		}
+		lexer::Token::LogicalXorOp => {
+			match left_value {
+				Value::NumberValue(left) => {
+					if let Value::NumberValue(right) = right_value {
+						if is_intable(Value::NumberValue(left))
+							&& is_intable(Value::NumberValue(right))
+						{
+							return Ok(Value::NumberValue((left as i64 ^ right as i64) as f64));
+						}
+
+						return Err(error::Err {
+							reason: error::ERR_RUNTIME,
+							message: format!(
+								"cannot take logical ^ of non-integer values {}, {} [{}]",
+								nv_to_s(right),
+								nv_to_s(left),
+								right_operand.pos()
+							),
+						});
+					}
+				}
+				Value::StringValue(left) => {
+					if let Value::StringValue(right) = right_value {
+						let max = max_len(left, right);
+						let a = zero_extend(left, max);
+						let b = zero_extend(right, max);
+						let c: Vec<u8> = Vec::new();
+						for i in 0..max {
+							c[i] = a[i] & b[i]
+						}
+						return Ok(Value::StringValue(c));
+					}
+				}
+				Value::BooleanValue(left) => {
+					if let Value::BooleanValue(right) = right_value {
+						return Ok(Value::BooleanValue(left && right));
+					}
+				}
+			}
+			return Err(error::Err {
+				reason: error::ERR_RUNTIME,
+				message: format!(
+					"values {} and {} do not support bitwise or logical ^ [{}]",
+					left_value,
+					right_value,
+					right_operand.pos()
+				),
+			});
+		}
+		lexer::Token::GreaterThanOp => {
+			match left_value {
+				Value::NumberValue(left) => {
+					if let Value::NumberValue(right) = right_value {
+						return Ok(Value::BooleanValue(left > right));
+					}
+				}
+				Value::StringValue(left) => {
+					if let Value::StringValue(right) = right_value {
+						return Ok(Value::BooleanValue(left > right));
+					}
+				}
+			}
+			return Err(error::Err {
+				reason: error::ERR_RUNTIME,
+				message: format!(
+					"values {} and {} do not support comparison [{}]",
+					left_value,
+					right_value,
+					right_operand.pos()
+				),
+			});
+		}
+		lexer::Token::LessThanOp => {
+			match left_value {
+				Value::NumberValue(left) => {
+					if let Value::NumberValue(right) = right_value {
+						return Ok(Value::BooleanValue(left < right));
+					}
+				}
+				Value::StringValue(left) => {
+					if let Value::StringValue(right) = right_value {
+						return Ok(Value::BooleanValue(left < right));
+					}
+				}
+			}
+			return Err(error::Err {
+				reason: error::ERR_RUNTIME,
+				message: format!(
+					"values {} and {} do not support comparison [{}]",
+					left_value,
+					right_value,
+					right_operand.pos()
+				),
+			});
+		}
+		lexer::Token::EqualOp => return Ok(Value::BooleanValue(left_value == right_value)),
 	}
+
+	let assert_err = error::Err {
+		reason: error::ERR_ASSERT,
+		message: format!("unknown binary operator {}", operator),
+	};
+	log::log_err_f(assert_err.reason, &[assert_err.message]);
+	return Err(assert_err);
 }
 
 impl parser::Node {
@@ -594,6 +773,25 @@ pub fn n_to_s(f: f64) -> String {
 // GoInk: n_to_s for NumberValue type
 fn nv_to_s(v: f64) -> String {
 	return n_to_s(v);
+}
+
+// zero-extend a vector of u8 bytes to given length
+fn zero_extend(s: Vec<u8>, max: usize) -> Vec<u8> {
+	if max <= s.len() {
+		return s;
+	}
+
+	let extended = s.clone();
+	for _ in 0..max - extended.len() {
+		extended.push(0)
+	}
+
+	return extended;
+}
+
+// GoInk: return the max length of two slices
+fn max_len(a: Vec<u8>, b: Vec<u8>) -> usize {
+	return cmp::max(a.len(), b.len());
 }
 
 // GoInk: ValueTable is used anytime a map of names/labels to Ink Values is needed,
