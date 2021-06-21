@@ -26,7 +26,7 @@ pub enum Value {
 	// in the Ink language.
 	NumberValue(f64),
 	// GoInk: StringValue represents all characters and strings in Ink
-	StringValue(String),
+	StringValue(Vec<u8>),
 	// GoInk: BooleanValue is either `true` or `false`
 	BooleanValue(bool),
 	// GoInk: NullValue is a value that only exists at the type level,
@@ -63,7 +63,14 @@ impl fmt::Display for Value {
 			Value::EmptyValue {} => write!(f, "_"),
 			Value::NumberValue(n) => write!(f, "{}", nv_to_s(*n)),
 			Value::StringValue(s) => {
-				write!(f, "'{}'", s.replace("\\", "\\\\").replace("'", "\\'"))
+				write!(
+					f,
+					"'{}'",
+					String::from_utf8(*s)
+						.unwrap()
+						.replace("\\", "\\\\")
+						.replace("'", "\\'")
+				)
 			}
 			Value::BooleanValue(b) => write!(f, "{}", b),
 			Value::NullValue(_) => write!(f, "()"),
@@ -171,6 +178,362 @@ impl PartialEq for Value {
 	}
 }
 
+fn operand_to_string(
+	right_operand: parser::Node,
+	frame: &StackFrame,
+) -> Result<String, error::Err> {
+	match right_operand {
+		parser::Node::IdentifierNode { val, .. } => return Ok(val),
+		parser::Node::StringLiteralNode { val, .. } => return Ok(val),
+		parser::Node::NumberLiteralNode { val, .. } => return Ok(n_to_s(val)),
+		_ => {
+			let right_evaluated_value = right_operand.eval(frame, false)?;
+			match right_evaluated_value {
+				Value::StringValue(s) => return Ok(String::from_utf8(s).unwrap()),
+				Value::NumberValue(n) => return Ok(nv_to_s(n)),
+				_ => {
+					return Err(error::Err {
+						reason: error::ERR_RUNTIME,
+						message: format!(
+							"cannot access invalid property name {} of a composite value [{}]",
+							right_evaluated_value,
+							right_operand.pos()
+						),
+					})
+				}
+			}
+		}
+	}
+}
+
+fn eval_unary(
+	frame: &StackFrame,
+	allow_thunk: bool,
+	operator: lexer::Kind,
+	operand: Box<parser::Node>,
+	position: lexer::Position,
+) -> Result<Value, error::Err> {
+	let operand = operand.eval(frame, false);
+	if let Err(err) = operand {
+		return Err(err);
+	} else if !matches!(operator, lexer::Token::NegationOp) {
+		let assert_err = error::Err {
+			reason: error::ERR_ASSERT,
+			message: format!("unrecognized unary operator {}", operator),
+		};
+		log::log_err_f(assert_err.reason, &[assert_err.message]);
+		return Err(assert_err);
+	}
+	let _operand = operand.unwrap();
+	match _operand {
+		Value::NumberValue(n) => return Ok(Value::NumberValue(-n)),
+		Value::BooleanValue(b) => return Ok(Value::BooleanValue(!b)),
+		_ => {
+			return Err(error::Err {
+				reason: error::ERR_RUNTIME,
+				message: format!(
+					"cannot negate non-boolean and non-number value {} [{}]",
+					_operand, position
+				),
+			})
+		}
+	};
+}
+
+fn eval_binary(
+	frame: &StackFrame,
+	allow_thunk: bool,
+	operator: lexer::Kind,
+	left_operand: Box<parser::Node>,
+	right_operand: Box<parser::Node>,
+	position: lexer::Position,
+) -> Result<Value, error::Err> {
+	if matches!(operator, lexer::Token::DefineOp) {
+		if let parser::Node::IdentifierNode { val, position, .. } = *left_operand {
+			if let parser::Node::EmptyIdentifierNode { .. } = *right_operand {
+				return Err(error::Err {
+					reason: error::ERR_RUNTIME,
+					message: format!(
+						"cannot assign an empty identifier value to {} [{}]",
+						val, position
+					),
+				});
+			} else {
+				let right_value = right_operand.eval(frame, false);
+				frame.set(val, right_value?);
+				return right_value;
+			}
+		}
+		if let parser::Node::BinaryExprNode {
+			operator,
+			left_operand,
+			right_operand,
+			position,
+			..
+		} = *left_operand
+		{
+			if operator == lexer::Token::AccessorOp {
+				let left_value = left_operand.eval(frame, false)?;
+				let left_key = operand_to_string(*right_operand, frame)?;
+				if let Value::CompositeValue(vt) = left_value {
+					let right_value = right_operand.eval(frame, false)?;
+					vt[&left_key] = right_value;
+					return Ok(Value::CompositeValue(vt));
+				} else if let Value::StringValue(left_string) = left_value {
+					if let parser::Node::IdentifierNode { val, .. } = *left_operand {
+						let right_value = right_operand.eval(frame, false)?;
+						if let Value::StringValue(right_string) = right_value {
+							let right_num = left_key.parse::<i64>();
+							if let Err(right_num) = right_num {
+								return Err(error::Err{
+									reason: error::ERR_RUNTIME,
+									message: format!("while accessing string {} at an index, found non-integer index {} [{}]",
+									Value::StringValue(left_string), left_key, right_operand.pos()
+								)
+								});
+							}
+							let rn = right_num.unwrap() as usize;
+							if 0 <= rn && rn < left_string.len() {
+								for (i, r) in left_string.iter().enumerate() {
+									if rn + i < left_string.len() {
+										left_string[rn + i] = *r
+									} else {
+										left_string.push(*r)
+									}
+								}
+								frame.up(val);
+								return Ok(Value::StringValue(left_string));
+							} else if rn == left_string.len() {
+								left_string.append(&mut right_string);
+								frame.up(val, left_string);
+								return Ok(Value::StringValue(left_string));
+							} else {
+								return Err(error::Err {
+									reason: error::ERR_RUNTIME,
+									message: format!(
+										"tried to modify string {} at out of bounds index {} [{}]",
+										Value::StringValue(left_string),
+										left_key,
+										right_operand.pos()
+									),
+								});
+							}
+						} else {
+							Err(error::Err {
+								reason: error::ERR_RUNTIME,
+								message: format!(
+									"cannot set part of string to a non-character {}",
+									right_value
+								),
+							})
+						}
+					} else {
+						return Err(error::Err {
+							reason: error::ERR_RUNTIME,
+							message: format!(
+								"cannot set string {} at index because string is not an identifier",
+								left_operand
+							),
+						});
+					}
+				} else {
+					return Err(error::Err {
+						reason: error::ERR_RUNTIME,
+						message: format!(
+							"cannot set property of a non-composite value {} [{}]",
+							left_value,
+							left_operand.pos()
+						),
+					});
+				}
+			}
+		}
+	} else if matches!(operator, lexer::Token::AccessorOp) {
+		let left_value = left_operand.eval(frame, false)?;
+		let right_value_str = operand_to_string(*right_operand, frame)?;
+		if let Value::CompositeValue(left_value_composite) = left_value {
+			if !left_value_composite.contains_key(&right_value_str) {
+				return Ok(NULL);
+			}
+			return Ok(*left_value_composite.get(&right_value_str).unwrap());
+		} else if let Value::StringValue(left_string) = left_value {
+			let right_num = right_value_str.parse::<i64>();
+			if let Err(right_num) = right_num {
+				return Err(error::Err {
+					reason: error::ERR_RUNTIME,
+					message: format!(
+						"while accessing string {} at an index, found non-integer index {} [{}]",
+						Value::StringValue(left_string),
+						right_value_str,
+						right_operand.pos()
+					),
+				});
+			}
+			let rn = right_num.unwrap() as usize;
+			if 0 <= rn && rn < left_string.len() {
+				return Ok(Value::StringValue([left_string[rn]].to_vec()));
+			}
+			return Ok(NULL);
+		} else {
+			return Err(error::Err {
+				reason: error::ERR_RUNTIME,
+				message: format!(
+					"cannot access property {} of a non-composite value {} [{}]",
+					right_operand,
+					left_value,
+					right_operand.pos()
+				),
+			});
+		}
+	}
+
+	let left_value = left_operand.eval(frame, false)?;
+	let right_value = right_operand.eval(frame, false)?;
+	match operator {
+		lexer::Token::AddOp => {
+			match left_value {
+				Value::NumberValue(ln) => {
+					if let Value::NumberValue(rn) = right_value {
+						return Ok(Value::NumberValue(ln + rn));
+					}
+				}
+				Value::StringValue(ls) => {
+					if let Value::StringValue(rs) = right_value {
+						// GoInk: In this context, strings are immutable. i.e. concatenating
+						// strings should produce a completely new string whose modifications
+						// won't be observable by the original strings.
+						return Ok(Value::StringValue([ls, rs].concat()));
+					}
+				}
+				Value::BooleanValue(lb) => {
+					if let Value::BooleanValue(rb) = right_value {
+						return Ok(Value::BooleanValue(lb || rb));
+					}
+				}
+				_ => Err(error::Err {
+					reason: error::ERR_RUNTIME,
+					message: format!(
+						"values {} and {} do not support addition [{}]",
+						left_value, right_value, operator
+					),
+				}),
+			}
+		}
+		lexer::Token::SubtractOp => {
+			if let Value::NumberValue(ln) = left_value {
+				if let Value::NumberValue(rn) = right_value {
+					return Ok(Value::NumberValue(ln - rn));
+				}
+			}
+			return Err(error::Err {
+				reason: error::ERR_RUNTIME,
+				message: format!(
+					"values {} and {} do not support subtraction [{}]",
+					left_value, right_value, operator
+				),
+			});
+		}
+		lexer::Token::MultiplyOp => {
+			match left_value {
+				Value::NumberValue(ln) => {
+					if let Value::NumberValue(rn) = right_value {
+						return Ok(Value::NumberValue(ln * rn));
+					}
+				}
+				Value::BooleanValue(lb) => {
+					if let Value::BooleanValue(rb) = right_value {
+						return Ok(Value::BooleanValue(lb && rb));
+					}
+				}
+			}
+			return Err(error::Err {
+				reason: error::ERR_RUNTIME,
+				message: format!(
+					"values {} and {} do not support multiplication [{}]",
+					left_value, right_value, operator
+				),
+			});
+		}
+		lexer::Token::DivideOp => {
+			if let Value::NumberValue(lv) = left_value {
+				if let Value::NumberValue(rv) = right_value {
+					if right == 0 {
+						return Err(error::Err {
+							reason: error::ERR_RUNTIME,
+							message: format!("division by zero error [{}]", right_operand.pos()),
+						});
+					}
+					return Ok(Value::NumberValue(lv / rv));
+				}
+			}
+			return Err(error::Err {
+				reason: error::ERR_RUNTIME,
+				message: format!(
+					"values {} and {} do not support division [{}]",
+					left_value, right_value, operator
+				),
+			});
+		}
+		lexer::Token::ModulusOp => {
+			if let Value::NumberValue(lv) = left_value {
+				if let Value::NumberValue(rv) = right_value {
+					if rv == 0.0 {
+						return Err(error::Err {
+							reason: error::ERR_RUNTIME,
+							message: format!(
+								"division by zero error in modulus [{}]",
+								right_operand.pos()
+							),
+						});
+					}
+					if is_intable(Value::NumberValue(rv)) {
+						return Ok(Value::NumberValue(lv % rv));
+					}
+					return Err(error::Err {
+						reason: error::ERR_RUNTIME,
+						message: format!(
+							"cannot take modulus of non-integer value {} [{}]",
+							nv_to_s(rv),
+							left_operand.pos()
+						),
+					});
+				}
+			}
+			return Err(error::Err {
+				reason: error::ERR_RUNTIME,
+				message: format!(
+					"values {} and {} do not support modulus [{}]",
+					left_value,
+					right_value,
+					right_operand.pos()
+				),
+			});
+		}
+		lexer::Token::LogicalAndOp => match left_value {
+			Value::NumberValue(ln) => {
+				if let Value::NumberValue(rn) = right_value {
+					if is_intable(Value::NumberValue(ln)) && is_intable(Value::NumberValue(rn)) {
+						return Value::NumberValue(ln as i64 & rn as i64);
+					}
+
+					return Err(error::Err {
+						reason: error::ERR_RUNTIME,
+						message: format!(
+							"cannot take logical & of non-integer values {}, {} [{}]",
+							nv_to_s(rn),
+							nv_to_s(ln),
+							right_operand.pos()
+						),
+					});
+				}
+			}
+			Value::StringValue(ls) => {
+				// TODO next
+			}
+		},
+	}
+}
+
 impl parser::Node {
 	fn eval(&self, frame: &StackFrame, allow_thunk: bool) -> Result<Value, error::Err> {
 		if matches!(self, parser::Node::EmptyIdentifierNode { .. }) {
@@ -182,32 +545,7 @@ impl parser::Node {
 					operand,
 					position,
 					..
-				} => {
-					let operand = operand.eval(frame, false);
-					if let Err(err) = operand {
-						return Err(err);
-					}
-					let _operand = operand.unwrap();
-					match _operand {
-						Value::NumberValue(n) => return Ok(Value::NumberValue(-n)),
-						Value::BooleanValue(b) => return Ok(Value::BooleanValue(!b)),
-						_ => {
-							return Err(error::Err {
-								reason: error::ERR_RUNTIME,
-								message: format!(
-									"cannot negate non-boolean and non-number value {} [{}]",
-									_operand, position
-								),
-							})
-						}
-					};
-					let assert_err = error::Err {
-						reason: error::ERR_ASSERT,
-						message: format!("unrecognized unary operator {}", &*self),
-					};
-					log::log_err_f(assert_err.reason, &[assert_err.message]);
-					Err(assert_err)
-				}
+				} => return eval_unary(frame, allow_thunk, *operator, *operand, *position),
 				parser::Node::BinaryExprNode {
 					operator,
 					left_operand,
@@ -215,26 +553,30 @@ impl parser::Node {
 					position,
 					..
 				} => {
-					if matches!(operator, lexer::Token::DefineOp) {
-						if let parser::Node::IdentifierNode(lo) = left_operand {
-							if let parser::Node::EmptyIdentifierNode(ro) = right_operand {
-								return Err(error::Err {
-									reason: error::ERR_RUNTIME,
-									message: format!(
-										"cannot assign an empty identifier value to {} [{}]",
-										lo,
-										lo.pos()
-									),
-								});
-							}
-						}
-					}
+					return eval_binary(
+						frame,
+						allow_thunk,
+						*operator,
+						*left_operand,
+						*right_operand,
+						*position,
+					)
 				}
 				parser::Node::NumberLiteralNode { val, .. } => Ok(Value::NumberValue(*val)),
 				_ => Ok(Value::EmptyValue {}),
 			}
 		}
 	}
+}
+
+fn is_intable(v: Value) -> bool {
+	// GoInk: Note: this returns false for int64 outside of the float64 range,
+	// but that's ok since is_intable is used to check before ops that will
+	// convert values to float64's (NumberValues) anyway
+	if let Value::NumberValue(n) = v {
+		return n == (n as i64) as f64;
+	}
+	panic!("is_intable was called with incompatible value {}", v);
 }
 
 // GoInk: Utility func to get a consistent, language spec-compliant
@@ -284,6 +626,12 @@ struct StackFrame {
 
 // 	return
 // }
+
+impl StackFrame {
+	fn set(&self, name: String, val: Value) {
+		self.vt["name"] = val
+	}
+}
 
 impl Engine<'_> {
 	// GoInk: create_contex creates and initializes a new Context tied to a given Engine.
