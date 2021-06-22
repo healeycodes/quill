@@ -723,6 +723,21 @@ fn eval_binary(
 	return Err(assert_err);
 }
 
+fn eval_identifier(
+	frame: &mut StackFrame,
+	allow_thunk: bool,
+	val: String,
+	position: &lexer::Position,
+) -> Result<Value, error::Err> {
+	if let Some(value) = frame.get(&val) {
+		return Ok(value);
+	}
+	Err(error::Err {
+		reason: error::ERR_RUNTIME,
+		message: format!("{} is not defined [{}]", val, position),
+	})
+}
+
 impl parser::Node {
 	fn eval(&self, frame: &mut StackFrame, allow_thunk: bool) -> Result<Value, error::Err> {
 		if matches!(self, parser::Node::EmptyIdentifierNode { .. }) {
@@ -752,6 +767,9 @@ impl parser::Node {
 					)
 				}
 				parser::Node::NumberLiteralNode { val, .. } => Ok(Value::NumberValue(*val)),
+				parser::Node::IdentifierNode { val, position, .. } => {
+					return eval_identifier(frame, allow_thunk, val.to_string(), position)
+				}
 				_ => Ok(Value::EmptyValue {}),
 			}
 		}
@@ -836,6 +854,17 @@ struct StackFrame {
 // }
 
 impl StackFrame {
+	// GoInk: Get a value from the stack frame chain
+	fn get(&self, name: &String) -> Option<Value> {
+		if let Some(value) = self.vt.get(name) {
+			return Some(value.clone());
+		}
+		if let None = self.parent {
+			return None;
+		}
+		return self.parent.as_ref().unwrap().get(name);
+	}
+
 	// GoInk: Set a value to the most recent call stack frame
 	fn set(&mut self, name: String, val: Value) {
 		self.vt.insert(name, val);
@@ -989,12 +1018,10 @@ impl fmt::Display for StackFrame {
 			entries.push(format!("{} -> {}", key, vstr))
 		}
 
-		return write!(
-			f,
-			"{{\n\t{}\n}} -prnt-> {}",
-			entries.join("\n\t"),
-			"" // TODO: self.parent
-		);
+		if let Some(parent) = &self.parent {
+			return write!(f, "{{\n\t{}\n}} -prnt-> {}", entries.join("\n\t"), parent);
+		}
+		return write!(f, "{{\n\t{}\n}} -prnt-> {}", entries.join("\n\t"), "*");
 	}
 }
 
