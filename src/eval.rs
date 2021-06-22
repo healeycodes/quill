@@ -17,7 +17,7 @@ const MAX_PRINT_LEN: usize = 120;
 // GoInk: Value represents any value in the Ink programming language.
 // Each value corresponds to some primitive or object value created
 // during the execution of an Ink program.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Value {
 	// GoInk: EmptyValue is the value of the empty identifier.
 	// it is globally unique and matches everything in equality.
@@ -42,13 +42,13 @@ pub enum Value {
 	FunctionCallThunkValue(FunctionCallThunkValue),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct FunctionValue {
 	defn: parser::Node, // FunctionLiteralNode
 	parent_frame: StackFrame,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct FunctionCallThunkValue {
 	vt: ValueTable,
 	function: FunctionValue,
@@ -180,14 +180,14 @@ impl PartialEq for Value {
 
 fn operand_to_string(
 	right_operand: parser::Node,
-	frame: &StackFrame,
+	frame: &mut StackFrame,
 ) -> Result<String, error::Err> {
 	match right_operand {
 		parser::Node::IdentifierNode { val, .. } => return Ok(val),
 		parser::Node::StringLiteralNode { val, .. } => return Ok(val),
 		parser::Node::NumberLiteralNode { val, .. } => return Ok(n_to_s(val)),
 		_ => {
-			let right_evaluated_value = right_operand.eval(&mut frame, false)?;
+			let right_evaluated_value = right_operand.eval(frame, false)?;
 			match right_evaluated_value {
 				Value::StringValue(s) => return Ok(String::from_utf8(s).unwrap()),
 				Value::NumberValue(n) => return Ok(nv_to_s(n)),
@@ -207,13 +207,13 @@ fn operand_to_string(
 }
 
 fn eval_unary(
-	frame: &StackFrame,
+	frame: &mut StackFrame,
 	allow_thunk: bool,
 	operator: &lexer::Kind,
 	operand: &Box<parser::Node>,
 	position: &lexer::Position,
 ) -> Result<Value, error::Err> {
-	let operand = operand.eval(&mut frame, false);
+	let operand = operand.eval(frame, false);
 	if let Err(err) = operand {
 		return Err(err);
 	} else if !matches!(operator, lexer::Token::NegationOp) {
@@ -221,7 +221,7 @@ fn eval_unary(
 			reason: error::ERR_ASSERT,
 			message: format!("unrecognized unary operator {}", operator),
 		};
-		log::log_err_f(assert_err.reason, &[assert_err.message]);
+		log::log_err_f(assert_err.reason, &[assert_err.message.to_owned()]);
 		return Err(assert_err);
 	}
 	let _operand = operand.unwrap();
@@ -249,7 +249,7 @@ fn eval_binary(
 	position: &lexer::Position,
 ) -> Result<Value, error::Err> {
 	if matches!(operator, lexer::Token::DefineOp) {
-		if let parser::Node::IdentifierNode { val, position, .. } = **left_operand {
+		if let parser::Node::IdentifierNode { val, position, .. } = &**left_operand {
 			if let parser::Node::EmptyIdentifierNode { .. } = **right_operand {
 				return Err(error::Err {
 					reason: error::ERR_RUNTIME,
@@ -259,9 +259,9 @@ fn eval_binary(
 					),
 				});
 			} else {
-				let right_value = right_operand.eval(frame, false);
-				frame.set(val, right_value?);
-				return right_value;
+				let right_value = right_operand.eval(frame, false)?;
+				frame.set(val.to_owned(), right_value.clone());
+				return Ok(right_value);
 			}
 		}
 		if let parser::Node::BinaryExprNode {
@@ -270,17 +270,17 @@ fn eval_binary(
 			right_operand,
 			position,
 			..
-		} = **left_operand
+		} = &**left_operand
 		{
-			if operator == lexer::Token::AccessorOp {
-				let left_value = left_operand.eval(frame, false)?;
-				let left_key = operand_to_string(*right_operand, frame)?;
-				if let Value::CompositeValue(vt) = left_value {
+			if *operator == lexer::Token::AccessorOp {
+				let mut left_value = left_operand.eval(frame, false)?;
+				let left_key = operand_to_string((**right_operand).clone(), frame)?;
+				if let Value::CompositeValue(mut vt) = left_value {
 					let right_value = right_operand.eval(frame, false)?;
-					vt[&left_key] = right_value;
+					vt.insert(left_key, right_value);
 					return Ok(Value::CompositeValue(vt));
-				} else if let Value::StringValue(mut left_string) = left_value {
-					if let parser::Node::IdentifierNode { val, .. } = *left_operand {
+				} else if let Value::StringValue(ref mut left_string) = left_value {
+					if let parser::Node::IdentifierNode { val, .. } = &**left_operand {
 						let right_value = right_operand.eval(frame, false)?;
 						if let Value::StringValue(mut right_string) = right_value {
 							let right_num = left_key.parse::<i64>();
@@ -288,31 +288,36 @@ fn eval_binary(
 								return Err(error::Err{
 									reason: error::ERR_RUNTIME,
 									message: format!("while accessing string {} at an index, found non-integer index {} [{}]",
-									Value::StringValue(left_string), left_key, right_operand.pos()
+									Value::StringValue(left_string.to_owned()), left_key, right_operand.pos()
 								)
 								});
 							}
 							let rn = right_num.unwrap() as usize;
+							let mut new_left_string = left_string.to_owned();
 							if 0 <= rn && rn < left_string.len() {
 								for (i, r) in left_string.iter().enumerate() {
 									if rn + i < left_string.len() {
-										left_string[rn + i] = *r
+										new_left_string[rn + i] = *r
 									} else {
-										left_string.push(*r)
+										new_left_string.push(*r)
 									}
 								}
-								frame.up(val, Value::StringValue(left_string));
-								return Ok(Value::StringValue(left_string));
+								frame.up(
+									val.to_owned(),
+									Value::StringValue(new_left_string.to_owned()),
+								);
+								return Ok(Value::StringValue(new_left_string));
 							} else if rn == left_string.len() {
 								left_string.append(&mut right_string);
-								frame.up(val, Value::StringValue(left_string));
-								return Ok(Value::StringValue(left_string));
+								frame
+									.up(val.to_owned(), Value::StringValue(left_string.to_owned()));
+								return Ok(Value::StringValue(left_string.to_owned()));
 							} else {
 								return Err(error::Err {
 									reason: error::ERR_RUNTIME,
 									message: format!(
 										"tried to modify string {} at out of bounds index {} [{}]",
-										Value::StringValue(left_string),
+										Value::StringValue(left_string.to_owned()),
 										left_key,
 										right_operand.pos()
 									),
@@ -350,12 +355,12 @@ fn eval_binary(
 		}
 	} else if matches!(operator, lexer::Token::AccessorOp) {
 		let left_value = left_operand.eval(frame, false)?;
-		let right_value_str = operand_to_string(**right_operand, frame)?;
-		if let Value::CompositeValue(left_value_composite) = left_value {
+		let right_value_str = operand_to_string((**right_operand).clone(), frame)?;
+		if let Value::CompositeValue(ref left_value_composite) = left_value {
 			if !left_value_composite.contains_key(&right_value_str) {
 				return Ok(NULL);
 			}
-			return Ok(*left_value_composite.get(&right_value_str).unwrap());
+			return Ok((*left_value_composite.get(&right_value_str).unwrap()).clone());
 		} else if let Value::StringValue(left_string) = left_value {
 			let right_num = right_value_str.parse::<i64>();
 			if let Err(right_num) = right_num {
@@ -392,24 +397,27 @@ fn eval_binary(
 	match operator {
 		lexer::Token::AddOp => {
 			match left_value {
-				Value::NumberValue(left) => {
+				Value::NumberValue(ref left) => {
 					if let Value::NumberValue(right) = right_value {
-						return Ok(Value::NumberValue(left + right));
+						return Ok(Value::NumberValue(*left + right));
 					}
 				}
-				Value::StringValue(left) => {
+				Value::StringValue(ref left) => {
 					if let Value::StringValue(right) = right_value {
 						// GoInk: In this context, strings are immutable. i.e. concatenating
 						// strings should produce a completely new string whose modifications
 						// won't be observable by the original strings.
-						return Ok(Value::StringValue([left, right].concat()));
+						return Ok(Value::StringValue(
+							left.iter().chain(&right).cloned().collect(),
+						));
 					}
 				}
-				Value::BooleanValue(left) => {
+				Value::BooleanValue(ref left) => {
 					if let Value::BooleanValue(right) = right_value {
-						return Ok(Value::BooleanValue(left || right));
+						return Ok(Value::BooleanValue(*left || right));
 					}
 				}
+				_ => {}
 			}
 			return Err(error::Err {
 				reason: error::ERR_RUNTIME,
@@ -445,6 +453,7 @@ fn eval_binary(
 						return Ok(Value::BooleanValue(left && right));
 					}
 				}
+				_ => {}
 			}
 			return Err(error::Err {
 				reason: error::ERR_RUNTIME,
@@ -530,11 +539,11 @@ fn eval_binary(
 						});
 					}
 				}
-				Value::StringValue(left) => {
+				Value::StringValue(ref left) => {
 					if let Value::StringValue(right) = right_value {
-						let max = max_len(&left, &right);
-						let a = zero_extend(left, max);
-						let b = zero_extend(right, max);
+						let max = max_len(left, &right);
+						let a = zero_extend(left.to_owned(), max);
+						let b = zero_extend(right.to_owned(), max);
 						let mut c: Vec<u8> = Vec::new();
 						for i in 0..max {
 							c[i] = a[i] & b[i]
@@ -542,11 +551,12 @@ fn eval_binary(
 						return Ok(Value::StringValue(c));
 					}
 				}
-				Value::BooleanValue(left) => {
+				Value::BooleanValue(ref left) => {
 					if let Value::BooleanValue(right) = right_value {
-						return Ok(Value::BooleanValue(left && right));
+						return Ok(Value::BooleanValue(*left && right));
 					}
 				}
+				_ => {}
 			}
 			return Err(error::Err {
 				reason: error::ERR_RUNTIME,
@@ -560,12 +570,12 @@ fn eval_binary(
 		}
 		lexer::Token::LogicalOrOp => {
 			match left_value {
-				Value::NumberValue(left) => {
+				Value::NumberValue(ref left) => {
 					if let Value::NumberValue(right) = right_value {
-						if is_intable(Value::NumberValue(left))
+						if is_intable(Value::NumberValue(*left))
 							&& is_intable(Value::NumberValue(right))
 						{
-							return Ok(Value::NumberValue((left as i64 | right as i64) as f64));
+							return Ok(Value::NumberValue((*left as i64 | right as i64) as f64));
 						}
 
 						return Err(error::Err {
@@ -573,17 +583,17 @@ fn eval_binary(
 							message: format!(
 								"cannot take logical | of non-integer values {}, {} [{}]",
 								nv_to_s(right),
-								nv_to_s(left),
+								nv_to_s(*left),
 								right_operand.pos()
 							),
 						});
 					}
 				}
-				Value::StringValue(left) => {
+				Value::StringValue(ref left) => {
 					if let Value::StringValue(right) = right_value {
-						let max = max_len(&left, &right);
-						let a = zero_extend(left, max);
-						let b = zero_extend(right, max);
+						let max = max_len(left, &right);
+						let a = zero_extend(left.to_owned(), max);
+						let b = zero_extend(right.to_owned(), max);
 						let mut c: Vec<u8> = Vec::new();
 						for i in 0..max {
 							c[i] = a[i] | b[i]
@@ -591,11 +601,12 @@ fn eval_binary(
 						return Ok(Value::StringValue(c));
 					}
 				}
-				Value::BooleanValue(left) => {
+				Value::BooleanValue(ref left) => {
 					if let Value::BooleanValue(right) = right_value {
-						return Ok(Value::BooleanValue(left || right));
+						return Ok(Value::BooleanValue(*left || right));
 					}
 				}
+				_ => {}
 			}
 			return Err(error::Err {
 				reason: error::ERR_RUNTIME,
@@ -609,12 +620,12 @@ fn eval_binary(
 		}
 		lexer::Token::LogicalXorOp => {
 			match left_value {
-				Value::NumberValue(left) => {
+				Value::NumberValue(ref left) => {
 					if let Value::NumberValue(right) = right_value {
-						if is_intable(Value::NumberValue(left))
+						if is_intable(Value::NumberValue(*left))
 							&& is_intable(Value::NumberValue(right))
 						{
-							return Ok(Value::NumberValue((left as i64 ^ right as i64) as f64));
+							return Ok(Value::NumberValue((*left as i64 ^ right as i64) as f64));
 						}
 
 						return Err(error::Err {
@@ -622,17 +633,17 @@ fn eval_binary(
 							message: format!(
 								"cannot take logical ^ of non-integer values {}, {} [{}]",
 								nv_to_s(right),
-								nv_to_s(left),
+								nv_to_s(*left),
 								right_operand.pos()
 							),
 						});
 					}
 				}
-				Value::StringValue(left) => {
+				Value::StringValue(ref left) => {
 					if let Value::StringValue(right) = right_value {
-						let max = max_len(&left, &right);
-						let a = zero_extend(left, max);
-						let b = zero_extend(right, max);
+						let max = max_len(left, &right);
+						let a = zero_extend(left.to_owned(), max);
+						let b = zero_extend(right.to_owned(), max);
 						let mut c: Vec<u8> = Vec::new();
 						for i in 0..max {
 							c[i] = a[i] & b[i]
@@ -640,9 +651,9 @@ fn eval_binary(
 						return Ok(Value::StringValue(c));
 					}
 				}
-				Value::BooleanValue(left) => {
+				Value::BooleanValue(ref left) => {
 					if let Value::BooleanValue(right) = right_value {
-						return Ok(Value::BooleanValue(left && right));
+						return Ok(Value::BooleanValue(*left && right));
 					}
 				}
 				_ => {}
@@ -659,16 +670,17 @@ fn eval_binary(
 		}
 		lexer::Token::GreaterThanOp => {
 			match left_value {
-				Value::NumberValue(left) => {
+				Value::NumberValue(ref left) => {
 					if let Value::NumberValue(right) = right_value {
-						return Ok(Value::BooleanValue(left > right));
+						return Ok(Value::BooleanValue(left > &right));
 					}
 				}
-				Value::StringValue(left) => {
+				Value::StringValue(ref left) => {
 					if let Value::StringValue(right) = right_value {
-						return Ok(Value::BooleanValue(left > right));
+						return Ok(Value::BooleanValue(left > &right));
 					}
 				}
+				_ => {}
 			}
 			return Err(error::Err {
 				reason: error::ERR_RUNTIME,
@@ -681,13 +693,13 @@ fn eval_binary(
 			});
 		}
 		lexer::Token::LessThanOp => {
-			if let Value::NumberValue(left) = left_value {
+			if let Value::NumberValue(ref left) = left_value {
 				if let Value::NumberValue(right) = right_value {
-					return Ok(Value::BooleanValue(left < right));
+					return Ok(Value::BooleanValue(*left < right));
 				}
-			} else if let Value::StringValue(left) = left_value {
+			} else if let Value::StringValue(ref left) = left_value {
 				if let Value::StringValue(right) = right_value {
-					return Ok(Value::BooleanValue(left < right));
+					return Ok(Value::BooleanValue(*left < right));
 				}
 			}
 			return Err(error::Err {
@@ -701,15 +713,14 @@ fn eval_binary(
 			});
 		}
 		lexer::Token::EqualOp => return Ok(Value::BooleanValue(left_value == right_value)),
-		_ => {
-			let assert_err = error::Err {
-				reason: error::ERR_ASSERT,
-				message: format!("unknown binary operator {}", operator),
-			};
-			log::log_err_f(assert_err.reason, &[assert_err.message.clone()]);
-			return Err(assert_err);
-		}
+		_ => {}
 	}
+	let assert_err = error::Err {
+		reason: error::ERR_ASSERT,
+		message: format!("unknown binary operator {}", operator),
+	};
+	log::log_err_f(assert_err.reason, &[assert_err.message.clone()]);
+	return Err(assert_err);
 }
 
 impl parser::Node {
@@ -799,7 +810,7 @@ type ValueTable = HashMap<String, Value>;
 
 // GoInk: StackFrame represents the heap of variables local to a particular function call frame,
 // and recursively references other parent StackFrames internally.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct StackFrame {
 	pub parent: Option<Box<StackFrame>>,
 	pub vt: ValueTable,
