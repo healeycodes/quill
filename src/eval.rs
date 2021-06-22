@@ -40,6 +40,9 @@ pub enum Value {
 	// GoInk: FunctionCallThunkValue is an internal representation of a lazy
 	// function evaluation used to implement tail call optimization.
 	FunctionCallThunkValue(FunctionCallThunkValue),
+	// GoInk: NativeFunctionValue represents a function whose implementation is written
+	// in Rust and built-into the runtime.
+	NativeFunctionValue(NativeFunctionValue),
 }
 
 #[derive(Debug, Clone)]
@@ -52,6 +55,11 @@ struct FunctionValue {
 struct FunctionCallThunkValue {
 	vt: ValueTable,
 	function: FunctionValue,
+}
+
+#[derive(Debug, Clone)]
+struct NativeFunctionValue {
+	// TODO
 }
 
 // GoInk: The singleton Null value is interned into a single value
@@ -204,6 +212,31 @@ fn operand_to_string(
 			}
 		}
 	}
+}
+
+// GoInk: unwrap_thunk expands out a recursive structure of thunks
+// into a flat for loop control structure
+fn unwrap_thunk(mut thunk: FunctionCallThunkValue) -> Result<Value, error::Err> {
+	let mut is_thunk = true;
+	while is_thunk {
+		let frame = &mut StackFrame {
+			parent: Some(Box::new(thunk.function.parent_frame.clone())),
+			vt: thunk.vt.clone(),
+		};
+		if let parser::Node::FunctionLiteralNode { body, .. } = thunk.function.defn {
+			let v = body.eval(frame, true)?;
+
+			if let Value::FunctionCallThunkValue(fcallthunk) = v {
+				thunk = FunctionCallThunkValue {
+					vt: fcallthunk.vt,
+					function: fcallthunk.function,
+				};
+				continue;
+			}
+			return Ok(v);
+		}
+	}
+	panic!("unreachable");
 }
 
 fn eval_unary(
@@ -738,6 +771,55 @@ fn eval_identifier(
 	})
 }
 
+fn eval_function_call(
+	frame: &mut StackFrame,
+	allow_thunk: bool,
+	function: &Box<parser::Node>,
+	arguments: Vec<parser::Node>,
+) -> Result<Value, error::Err> {
+	let fun = (function).eval(frame, false)?;
+	let mut arg_results: Vec<Value> = Vec::new();
+	for arg in arguments {
+		arg_results.push(arg.eval(frame, false)?)
+	}
+	return eval_ink_function(fun, allow_thunk, arg_results.to_owned());
+}
+
+// GoInk: call into an Ink callback function synchronously
+fn eval_ink_function(fun: Value, allow_thunk: bool, args: Vec<Value>) -> Result<Value, error::Err> {
+	if let Value::FunctionValue(ref funv) = fun {
+		let mut arg_value_table: ValueTable = HashMap::new();
+		if let parser::Node::FunctionLiteralNode { arguments, .. } = &funv.defn {
+			for (i, arg_node) in arguments.iter().enumerate() {
+				if i < args.len() {
+					if let parser::Node::IdentifierNode { val, .. } = arg_node {
+						arg_value_table.insert(val.to_string(), args[i].clone());
+					}
+				}
+			}
+
+			// GoInk: Tail Call Optimization used for evaluating expressions that may be in tail positions
+			// at the end of Nodes whose evaluation allocates another StackFrame
+			// like ExpressionListNode and FunctionLiteralNode's body
+			let return_thunk = FunctionCallThunkValue {
+				vt: arg_value_table,
+				function: funv.clone(),
+			};
+
+			if allow_thunk {
+				return Ok(Value::FunctionCallThunkValue(return_thunk));
+			}
+
+			return unwrap_thunk(return_thunk);
+		}
+	}
+	if let Value::NativeFunctionValue { .. } = fun {}
+	return Err(error::Err {
+		reason: error::ERR_RUNTIME,
+		message: format!("attempted to call a non-function value {}", fun),
+	});
+}
+
 impl parser::Node {
 	fn eval(&self, frame: &mut StackFrame, allow_thunk: bool) -> Result<Value, error::Err> {
 		if matches!(self, parser::Node::EmptyIdentifierNode { .. }) {
@@ -767,6 +849,11 @@ impl parser::Node {
 					)
 				}
 				parser::Node::NumberLiteralNode { val, .. } => Ok(Value::NumberValue(*val)),
+				parser::Node::FunctionCallNode {
+					function,
+					arguments,
+					..
+				} => eval_function_call(frame, allow_thunk, function, arguments.to_owned()),
 				parser::Node::IdentifierNode { val, position, .. } => {
 					return eval_identifier(frame, allow_thunk, val.to_string(), position)
 				}
