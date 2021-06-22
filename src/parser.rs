@@ -27,7 +27,7 @@ pub enum Node {
     },
     MatchExprNode {
         condition: Box<Node>,
-        clauses: Vec<Node>,
+        clauses: Vec<Node>, // MatchClauseNode
         position: lexer::Position,
     },
     ExpressionListNode {
@@ -261,7 +261,6 @@ pub fn parse(tokens: &[lexer::Tok], fatal_error: bool, debug_parser: bool) -> Ve
             }
             return vec![];
         }
-        
         let _expr = expr.unwrap();
         if debug_parser {
             log::log_debug(&[format!("parse -> {}", &_expr)])

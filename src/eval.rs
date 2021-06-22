@@ -236,7 +236,8 @@ fn unwrap_thunk(mut thunk: FunctionCallThunkValue) -> Result<Value, error::Err> 
 			return Ok(v);
 		}
 	}
-	panic!("unreachable");
+	// TODO: refactor to remove this branch or keep to maintain similarity to GoInk?
+	panic!("unreachable block inside unwrap_thunk");
 }
 
 fn eval_unary(
@@ -752,7 +753,7 @@ fn eval_binary(
 		reason: error::ERR_ASSERT,
 		message: format!("unknown binary operator {}", operator),
 	};
-	log::log_err_f(assert_err.reason, &[assert_err.message.clone()]);
+	log::log_err_f(assert_err.reason, &[assert_err.message.to_string()]);
 	return Err(assert_err);
 }
 
@@ -820,6 +821,29 @@ fn eval_ink_function(fun: Value, allow_thunk: bool, args: Vec<Value>) -> Result<
 	});
 }
 
+fn eval_match_expr(
+	frame: &mut StackFrame,
+	allow_thunk: bool,
+	condition: &Box<parser::Node>,
+	clauses: Vec<parser::Node>,
+) -> Result<Value, error::Err> {
+	let condition_val = condition.eval(frame, false)?;
+
+	// if let parser::Node::MatchExprNode{target} = clause {
+	// }
+	for clause in clauses {
+		if let parser::Node::MatchClauseNode { target, expression } = clause {
+			let target_val = target.eval(frame, false)?;
+			if condition_val == target_val {
+				// GoInk: match expression clauses are tail call optimized,
+				// so return a maybe ThunkValue
+				return expression.eval(frame, allow_thunk);
+			}
+		}
+	}
+	return Ok(NULL);
+}
+
 impl parser::Node {
 	fn eval(&self, frame: &mut StackFrame, allow_thunk: bool) -> Result<Value, error::Err> {
 		if matches!(self, parser::Node::EmptyIdentifierNode { .. }) {
@@ -854,6 +878,17 @@ impl parser::Node {
 					arguments,
 					..
 				} => eval_function_call(frame, allow_thunk, function, arguments.to_owned()),
+				parser::Node::MatchClauseNode { .. } => {
+					let assert_err = error::Err {
+						reason: error::ERR_ASSERT,
+						message: "cannot Eval a MatchClauseNode".to_string(),
+					};
+					log::log_err_f(assert_err.reason, &[assert_err.message.to_string()]);
+					Err(assert_err)
+				}
+				parser::Node::MatchExprNode {
+					condition, clauses, ..
+				} => return eval_match_expr(frame, allow_thunk, condition, clauses.clone()),
 				parser::Node::IdentifierNode { val, position, .. } => {
 					return eval_identifier(frame, allow_thunk, val.to_string(), position)
 				}
@@ -870,6 +905,7 @@ fn is_intable(v: Value) -> bool {
 	if let Value::NumberValue(n) = v {
 		return n == (n as i64) as f64;
 	}
+	// TODO: maybe just return false here?
 	panic!("is_intable was called with incompatible value {}", v);
 }
 
@@ -1073,17 +1109,17 @@ impl Context<'_> {
 		self.file = file_path;
 
 		// TODO: add a 'could not open' log message
-		let file_bytes = fs::read(self.file.clone());
+		let file_bytes = fs::read(self.file.to_string());
 		if let Err(err) = file_bytes {
 			let system_err = error::Err {
 				reason: error::ERR_SYNTAX,
 				message: format!(
 					"could not open {} for execution:\n\t-> {}",
-					self.file.clone(),
+					self.file.to_string(),
 					err
 				),
 			};
-			log::log_safe_err(system_err.reason, &[system_err.message.clone()]);
+			log::log_safe_err(system_err.reason, &[system_err.message.to_string()]);
 			return Err(system_err);
 		}
 		let _file_bytes = file_bytes.unwrap();
