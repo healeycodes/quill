@@ -1,3 +1,5 @@
-a := 1
-a + 2
-a()
+factorial := n => n :: {
+    0 -> 1
+    _ -> n * factorial(n-1)
+}
+factorial(5)

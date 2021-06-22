@@ -46,7 +46,7 @@ pub enum Node {
         position: lexer::Position,
     },
     StringLiteralNode {
-        val: String,
+        val: Vec<u8>,
         position: lexer::Position,
     },
     BooleanLiteralNode {
@@ -54,7 +54,7 @@ pub enum Node {
         position: lexer::Position,
     },
     ObjectLiteralNode {
-        entries: Vec<Node>,
+        entries: Vec<Node>, // ObjectEntryNode
         position: lexer::Position,
     },
     ObjectEntryNode {
@@ -162,7 +162,9 @@ impl fmt::Display for Node {
             Node::EmptyIdentifierNode { .. } => write!(f, "Empty Identifier"),
             Node::IdentifierNode { val, .. } => write!(f, "Identifier '{}'", val),
             Node::NumberLiteralNode { val, .. } => write!(f, "Number {}", eval::n_to_s(*val)),
-            Node::StringLiteralNode { val, .. } => write!(f, "String {}", val),
+            Node::StringLiteralNode { val, .. } => {
+                write!(f, "String {}", std::str::from_utf8(val).unwrap())
+            }
             Node::BooleanLiteralNode { val, .. } => write!(f, "Boolean {}", val),
             Node::ObjectLiteralNode { entries, .. } => write!(
                 f,
@@ -526,7 +528,7 @@ fn parse_atom(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
         lexer::Token::StringLiteral => {
             return (
                 Ok(Node::StringLiteralNode {
-                    val: tok.str.clone(),
+                    val: tok.str.clone().into_bytes(),
                     position: tok.position,
                 }),
                 idx,

@@ -17,7 +17,7 @@ const MAX_PRINT_LEN: usize = 120;
 // GoInk: Value represents any value in the Ink programming language.
 // Each value corresponds to some primitive or object value created
 // during the execution of an Ink program.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Value {
 	// GoInk: EmptyValue is the value of the empty identifier.
 	// it is globally unique and matches everything in equality.
@@ -45,19 +45,19 @@ pub enum Value {
 	NativeFunctionValue(NativeFunctionValue),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct FunctionValue {
 	defn: parser::Node, // FunctionLiteralNode
 	parent_frame: StackFrame,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct FunctionCallThunkValue {
 	vt: ValueTable,
 	function: FunctionValue,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct NativeFunctionValue {
 	// TODO
 }
@@ -74,7 +74,7 @@ impl fmt::Display for Value {
 				write!(
 					f,
 					"'{}'",
-					String::from_utf8(s.to_owned())
+					String::from_utf8(s.clone())
 						.unwrap()
 						.replace("\\", "\\\\")
 						.replace("'", "\\'")
@@ -192,7 +192,7 @@ fn operand_to_string(
 ) -> Result<String, error::Err> {
 	match right_operand {
 		parser::Node::IdentifierNode { val, .. } => return Ok(val),
-		parser::Node::StringLiteralNode { val, .. } => return Ok(val),
+		parser::Node::StringLiteralNode { val, .. } => return Ok(String::from_utf8(val).unwrap()),
 		parser::Node::NumberLiteralNode { val, .. } => return Ok(n_to_s(val)),
 		_ => {
 			let right_evaluated_value = right_operand.eval(frame, false)?;
@@ -255,7 +255,7 @@ fn eval_unary(
 			reason: error::ERR_ASSERT,
 			message: format!("unrecognized unary operator {}", operator),
 		};
-		log::log_err_f(assert_err.reason, &[assert_err.message.to_owned()]);
+		log::log_err_f(assert_err.reason, &[assert_err.message.clone()]);
 		return Err(assert_err);
 	}
 	let _operand = operand.unwrap();
@@ -294,7 +294,7 @@ fn eval_binary(
 				});
 			} else {
 				let right_value = right_operand.eval(frame, false)?;
-				frame.set(val.to_owned(), right_value.clone());
+				frame.set(val.clone(), right_value.clone());
 				return Ok(right_value);
 			}
 		}
@@ -322,12 +322,12 @@ fn eval_binary(
 								return Err(error::Err{
 									reason: error::ERR_RUNTIME,
 									message: format!("while accessing string {} at an index, found non-integer index {} [{}]",
-									Value::StringValue(left_string.to_owned()), left_key, right_operand.pos()
+									Value::StringValue(left_string.clone()), left_key, right_operand.pos()
 								)
 								});
 							}
 							let rn = right_num.unwrap() as usize;
-							let mut new_left_string = left_string.to_owned();
+							let mut new_left_string = left_string.clone();
 							if 0 <= rn && rn < left_string.len() {
 								for (i, r) in left_string.iter().enumerate() {
 									if rn + i < left_string.len() {
@@ -336,22 +336,18 @@ fn eval_binary(
 										new_left_string.push(*r)
 									}
 								}
-								frame.up(
-									val.to_owned(),
-									Value::StringValue(new_left_string.to_owned()),
-								);
+								frame.up(val.clone(), Value::StringValue(new_left_string.clone()));
 								return Ok(Value::StringValue(new_left_string));
 							} else if rn == left_string.len() {
 								left_string.append(&mut right_string);
-								frame
-									.up(val.to_owned(), Value::StringValue(left_string.to_owned()));
-								return Ok(Value::StringValue(left_string.to_owned()));
+								frame.up(val.clone(), Value::StringValue(left_string.clone()));
+								return Ok(Value::StringValue(left_string.clone()));
 							} else {
 								return Err(error::Err {
 									reason: error::ERR_RUNTIME,
 									message: format!(
 										"tried to modify string {} at out of bounds index {} [{}]",
-										Value::StringValue(left_string.to_owned()),
+										Value::StringValue(left_string.clone()),
 										left_key,
 										right_operand.pos()
 									),
@@ -576,8 +572,8 @@ fn eval_binary(
 				Value::StringValue(ref left) => {
 					if let Value::StringValue(right) = right_value {
 						let max = max_len(left, &right);
-						let a = zero_extend(left.to_owned(), max);
-						let b = zero_extend(right.to_owned(), max);
+						let a = zero_extend(left.clone(), max);
+						let b = zero_extend(right.clone(), max);
 						let mut c: Vec<u8> = Vec::new();
 						for i in 0..max {
 							c[i] = a[i] & b[i]
@@ -626,8 +622,8 @@ fn eval_binary(
 				Value::StringValue(ref left) => {
 					if let Value::StringValue(right) = right_value {
 						let max = max_len(left, &right);
-						let a = zero_extend(left.to_owned(), max);
-						let b = zero_extend(right.to_owned(), max);
+						let a = zero_extend(left.clone(), max);
+						let b = zero_extend(right.clone(), max);
 						let mut c: Vec<u8> = Vec::new();
 						for i in 0..max {
 							c[i] = a[i] | b[i]
@@ -676,8 +672,8 @@ fn eval_binary(
 				Value::StringValue(ref left) => {
 					if let Value::StringValue(right) = right_value {
 						let max = max_len(left, &right);
-						let a = zero_extend(left.to_owned(), max);
-						let b = zero_extend(right.to_owned(), max);
+						let a = zero_extend(left.clone(), max);
+						let b = zero_extend(right.clone(), max);
 						let mut c: Vec<u8> = Vec::new();
 						for i in 0..max {
 							c[i] = a[i] & b[i]
@@ -783,13 +779,13 @@ fn eval_function_call(
 	for arg in arguments {
 		arg_results.push(arg.eval(frame, false)?)
 	}
-	return eval_ink_function(fun, allow_thunk, arg_results.to_owned());
+	return eval_ink_function(fun, allow_thunk, arg_results.clone());
 }
 
 // GoInk: call into an Ink callback function synchronously
 fn eval_ink_function(fun: Value, allow_thunk: bool, args: Vec<Value>) -> Result<Value, error::Err> {
 	if let Value::FunctionValue(ref funv) = fun {
-		let mut arg_value_table: ValueTable = HashMap::new();
+		let mut arg_value_table = ValueTable::new();
 		if let parser::Node::FunctionLiteralNode { arguments, .. } = &funv.defn {
 			for (i, arg_node) in arguments.iter().enumerate() {
 				if i < args.len() {
@@ -844,56 +840,127 @@ fn eval_match_expr(
 	return Ok(NULL);
 }
 
+fn eval_expression_list(
+	frame: &mut StackFrame,
+	allow_thunk: bool,
+	expressions: Vec<parser::Node>,
+) -> Result<Value, error::Err> {
+	let length = expressions.len();
+	if length == 0 {
+		return Ok(NULL);
+	}
+
+	let call_frame = &mut StackFrame {
+		parent: Some(Box::new(frame.clone())),
+		vt: ValueTable::new(),
+	};
+
+	for i in 0..length - 1 {
+		expressions[i].eval(call_frame, false)?;
+	}
+
+	// GoInk: return values of expression lists are tail call optimized,
+	// so return a maybe ThunkValue
+	return expressions[length - 1..][0].eval(call_frame, allow_thunk);
+}
+
+fn eval_object_literal(
+	frame: &mut StackFrame,
+	allow_thunk: bool,
+	entries: Vec<parser::Node>,
+) -> Result<Value, error::Err> {
+	let mut obj = ValueTable::new();
+	for entry in entries {
+		if let parser::Node::ObjectEntryNode { key, val, .. } = entry {
+			let key_str = operand_to_string(*key, frame)?;
+			obj.insert(key_str, val.eval(frame, false)?);
+		}
+	}
+	Ok(Value::CompositeValue(obj))
+}
+
+fn eval_list_literal(
+	frame: &mut StackFrame,
+	allow_thunk: bool,
+	vals: Vec<parser::Node>,
+) -> Result<Value, error::Err> {
+	let mut list_val = ValueTable::new();
+	for (i, n) in vals.iter().enumerate() {
+		list_val.insert(i.to_string(), n.eval(frame, false)?);
+	}
+	Ok(Value::CompositeValue(list_val))
+}
+
 impl parser::Node {
 	fn eval(&self, frame: &mut StackFrame, allow_thunk: bool) -> Result<Value, error::Err> {
-		if matches!(self, parser::Node::EmptyIdentifierNode { .. }) {
-			Ok(Value::EmptyValue {})
-		} else {
-			match &*self {
-				parser::Node::UnaryExprNode {
-					operator,
-					operand,
-					position,
-					..
-				} => return eval_unary(frame, allow_thunk, operator, operand, position),
-				parser::Node::BinaryExprNode {
-					operator,
-					left_operand,
-					right_operand,
-					position,
-					..
-				} => {
-					return eval_binary(
-						frame,
-						allow_thunk,
-						operator,
-						left_operand,
-						right_operand,
-						position,
-					)
-				}
-				parser::Node::NumberLiteralNode { val, .. } => Ok(Value::NumberValue(*val)),
-				parser::Node::FunctionCallNode {
-					function,
-					arguments,
-					..
-				} => eval_function_call(frame, allow_thunk, function, arguments.to_owned()),
-				parser::Node::MatchClauseNode { .. } => {
-					let assert_err = error::Err {
-						reason: error::ERR_ASSERT,
-						message: "cannot Eval a MatchClauseNode".to_string(),
-					};
-					log::log_err_f(assert_err.reason, &[assert_err.message.to_string()]);
-					Err(assert_err)
-				}
-				parser::Node::MatchExprNode {
-					condition, clauses, ..
-				} => return eval_match_expr(frame, allow_thunk, condition, clauses.clone()),
-				parser::Node::IdentifierNode { val, position, .. } => {
-					return eval_identifier(frame, allow_thunk, val.to_string(), position)
-				}
-				_ => Ok(Value::EmptyValue {}),
+		if let parser::Node::FunctionLiteralNode { .. } = self {
+			return Ok(Value::FunctionValue(FunctionValue {
+				defn: self.clone(),
+				parent_frame: frame.clone(),
+			}));
+		}
+		match &*self {
+			parser::Node::UnaryExprNode {
+				operator,
+				operand,
+				position,
+				..
+			} => eval_unary(frame, allow_thunk, operator, operand, position),
+			parser::Node::BinaryExprNode {
+				operator,
+				left_operand,
+				right_operand,
+				position,
+				..
+			} => eval_binary(
+				frame,
+				allow_thunk,
+				operator,
+				left_operand,
+				right_operand,
+				position,
+			),
+			parser::Node::FunctionCallNode {
+				function,
+				arguments,
+				..
+			} => eval_function_call(frame, allow_thunk, function, arguments.clone()),
+			parser::Node::MatchClauseNode { .. } => {
+				let assert_err = error::Err {
+					reason: error::ERR_ASSERT,
+					message: "cannot Eval a MatchClauseNode".to_string(),
+				};
+				log::log_err_f(assert_err.reason, &[assert_err.message.to_string()]);
+				Err(assert_err)
 			}
+			parser::Node::MatchExprNode {
+				condition, clauses, ..
+			} => eval_match_expr(frame, allow_thunk, condition, clauses.clone()),
+			parser::Node::ExpressionListNode { expressions, .. } => {
+				eval_expression_list(frame, allow_thunk, expressions.clone())
+			}
+			parser::Node::EmptyIdentifierNode { .. } => Ok(Value::EmptyValue {}),
+			parser::Node::IdentifierNode { val, position, .. } => {
+				eval_identifier(frame, allow_thunk, val.to_string(), position)
+			}
+			parser::Node::NumberLiteralNode { val, .. } => Ok(Value::NumberValue(*val)),
+			parser::Node::StringLiteralNode { val, .. } => Ok(Value::StringValue((*val).clone())),
+			parser::Node::BooleanLiteralNode { val, .. } => Ok(Value::BooleanValue(*val)),
+			parser::Node::ObjectLiteralNode { entries, .. } => {
+				eval_object_literal(frame, allow_thunk, entries.clone())
+			}
+			parser::Node::ObjectEntryNode { .. } => {
+				let assert_err = error::Err {
+					reason: error::ERR_ASSERT,
+					message: "cannot Eval a ObjectEntryNode".to_string(),
+				};
+				log::log_err_f(assert_err.reason, &[assert_err.message.to_string()]);
+				Err(assert_err)
+			}
+			parser::Node::ListLiteralNode { vals, .. } => {
+				eval_list_literal(frame, allow_thunk, vals.clone())
+			}
+			_ => Ok(Value::EmptyValue {}),
 		}
 	}
 }
@@ -951,30 +1018,11 @@ type ValueTable = HashMap<String, Value>;
 
 // GoInk: StackFrame represents the heap of variables local to a particular function call frame,
 // and recursively references other parent StackFrames internally.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct StackFrame {
 	pub parent: Option<Box<StackFrame>>,
 	pub vt: ValueTable,
 }
-
-// unwrapThunk expands out a recursive structure of thunks
-// 	into a flat for loop control structure
-// fn unwrap_thunk(thunk: FunctionCallThunkValue) -> Result<(), error::Err> {
-// 	let mut is_thunk = true;
-// 	while is_thunk {
-// 		let frame = &StackFrame{
-// 			parent: thunk.function.parent_frame,
-// 			vt:     thunk.vt,
-// 		};
-// 		let (v, err) = thunk.function.defn.body.Eval(frame, true)
-//         if let Err(err) = err {
-//             return (Err(err), 0);
-//         }
-// 		let (thunk, is_thunk) = v.(FunctionCallThunkValue)
-// 	}
-
-// 	return
-// }
 
 impl StackFrame {
 	// GoInk: Get a value from the stack frame chain
@@ -1013,7 +1061,7 @@ impl Engine<'_> {
 			engine: self,
 			frame: StackFrame {
 				parent: Option::None,
-				vt: HashMap::new(),
+				vt: ValueTable::new(),
 			},
 		};
 
