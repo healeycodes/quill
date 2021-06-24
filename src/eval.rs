@@ -3,9 +3,12 @@ use crate::lexer;
 use crate::log;
 use crate::parser;
 use std::{
+	cell::RefCell,
 	cmp,
 	collections::HashMap,
-	fmt, fs, io, str,
+	fmt, fs, io,
+	rc::Rc,
+	str,
 	sync::{Arc, Barrier, Mutex},
 	thread,
 };
@@ -48,7 +51,7 @@ pub enum Value {
 #[derive(Clone)]
 struct FunctionValue {
 	defn: parser::Node, // FunctionLiteralNode
-	parent_frame: StackFrame,
+	parent_frame: Rc<RefCell<StackFrame>>,
 }
 
 #[derive(Clone)]
@@ -188,14 +191,14 @@ impl PartialEq for Value {
 
 fn operand_to_string(
 	right_operand: parser::Node,
-	frame: &mut StackFrame,
+	frame: Rc<RefCell<StackFrame>>,
 ) -> Result<String, error::Err> {
 	match right_operand {
 		parser::Node::IdentifierNode { val, .. } => return Ok(val),
 		parser::Node::StringLiteralNode { val, .. } => return Ok(String::from_utf8(val).unwrap()),
 		parser::Node::NumberLiteralNode { val, .. } => return Ok(n_to_s(val)),
 		_ => {
-			let right_evaluated_value = right_operand.eval(frame, false)?;
+			let right_evaluated_value = right_operand.eval(Rc::clone(&frame), false)?;
 			match right_evaluated_value {
 				Value::StringValue(s) => return Ok(String::from_utf8(s).unwrap()),
 				Value::NumberValue(n) => return Ok(nv_to_s(n)),
@@ -219,12 +222,12 @@ fn operand_to_string(
 fn unwrap_thunk(mut thunk: FunctionCallThunkValue) -> Result<Value, error::Err> {
 	let mut is_thunk = true;
 	while is_thunk {
-		let frame = &mut StackFrame {
-			parent: Some(Box::new(thunk.function.parent_frame.clone())),
+		let frame = Rc::new(RefCell::new(StackFrame {
+			parent: Some(Rc::clone(&thunk.function.parent_frame)),
 			vt: thunk.vt.clone(),
-		};
+		}));
 		if let parser::Node::FunctionLiteralNode { body, .. } = thunk.function.defn {
-			let v = body.eval(frame, true)?;
+			let v = body.eval(Rc::clone(&frame), true)?;
 
 			if let Value::FunctionCallThunkValue(fcallthunk) = v {
 				thunk = FunctionCallThunkValue {
@@ -241,13 +244,13 @@ fn unwrap_thunk(mut thunk: FunctionCallThunkValue) -> Result<Value, error::Err> 
 }
 
 fn eval_unary(
-	frame: &mut StackFrame,
+	frame: Rc<RefCell<StackFrame>>,
 	allow_thunk: bool,
-	operator: &lexer::Kind,
+	operator: lexer::Kind,
 	operand: &Box<parser::Node>,
-	position: &lexer::Position,
+	position: lexer::Position,
 ) -> Result<Value, error::Err> {
-	let operand = operand.eval(frame, false);
+	let operand = operand.eval(Rc::clone(&frame), false);
 	if let Err(err) = operand {
 		return Err(err);
 	} else if !matches!(operator, lexer::Token::NegationOp) {
@@ -275,12 +278,12 @@ fn eval_unary(
 }
 
 fn eval_binary(
-	frame: &mut StackFrame,
+	frame: Rc<RefCell<StackFrame>>,
 	allow_thunk: bool,
-	operator: &lexer::Kind,
+	operator: lexer::Kind,
 	left_operand: &Box<parser::Node>,
 	right_operand: &Box<parser::Node>,
-	position: &lexer::Position,
+	position: lexer::Position,
 ) -> Result<Value, error::Err> {
 	if matches!(operator, lexer::Token::DefineOp) {
 		if let parser::Node::IdentifierNode { val, position, .. } = &**left_operand {
@@ -293,8 +296,8 @@ fn eval_binary(
 					),
 				});
 			} else {
-				let right_value = right_operand.eval(frame, false)?;
-				frame.set(val.clone(), right_value.clone());
+				let right_value = right_operand.eval(Rc::clone(&frame), false)?;
+				frame.borrow_mut().set(val.clone(), right_value.clone());
 				return Ok(right_value);
 			}
 		}
@@ -307,15 +310,15 @@ fn eval_binary(
 		} = &**left_operand
 		{
 			if *operator == lexer::Token::AccessorOp {
-				let mut left_value = left_operand.eval(frame, false)?;
-				let left_key = operand_to_string((**right_operand).clone(), frame)?;
+				let mut left_value = left_operand.eval(Rc::clone(&frame), false)?;
+				let left_key = operand_to_string((**right_operand).clone(), Rc::clone(&frame))?;
 				if let Value::CompositeValue(mut vt) = left_value {
 					let right_value = right_operand.eval(frame, false)?;
 					vt.insert(left_key, right_value);
 					return Ok(Value::CompositeValue(vt));
 				} else if let Value::StringValue(ref mut left_string) = left_value {
 					if let parser::Node::IdentifierNode { val, .. } = &**left_operand {
-						let right_value = right_operand.eval(frame, false)?;
+						let right_value = right_operand.eval(Rc::clone(&frame), false)?;
 						if let Value::StringValue(mut right_string) = right_value {
 							let right_num = left_key.parse::<i64>();
 							if let Err(right_num) = right_num {
@@ -336,11 +339,15 @@ fn eval_binary(
 										new_left_string.push(*r)
 									}
 								}
-								frame.up(val.clone(), Value::StringValue(new_left_string.clone()));
+								frame
+									.borrow_mut()
+									.up(val.clone(), Value::StringValue(new_left_string.clone()));
 								return Ok(Value::StringValue(new_left_string));
 							} else if rn == left_string.len() {
 								left_string.append(&mut right_string);
-								frame.up(val.clone(), Value::StringValue(left_string.clone()));
+								frame
+									.borrow_mut()
+									.up(val.clone(), Value::StringValue(left_string.clone()));
 								return Ok(Value::StringValue(left_string.clone()));
 							} else {
 								return Err(error::Err {
@@ -384,8 +391,8 @@ fn eval_binary(
 			}
 		}
 	} else if matches!(operator, lexer::Token::AccessorOp) {
-		let left_value = left_operand.eval(frame, false)?;
-		let right_value_str = operand_to_string((**right_operand).clone(), frame)?;
+		let left_value = left_operand.eval(Rc::clone(&frame), false)?;
+		let right_value_str = operand_to_string((**right_operand).clone(), Rc::clone(&frame))?;
 		if let Value::CompositeValue(ref left_value_composite) = left_value {
 			if !left_value_composite.contains_key(&right_value_str) {
 				return Ok(NULL);
@@ -422,8 +429,8 @@ fn eval_binary(
 		}
 	}
 
-	let left_value = left_operand.eval(frame, false)?;
-	let right_value = right_operand.eval(frame, false)?;
+	let left_value = left_operand.eval(Rc::clone(&frame), false)?;
+	let right_value = right_operand.eval(Rc::clone(&frame), false)?;
 	match operator {
 		lexer::Token::AddOp => {
 			match left_value {
@@ -754,12 +761,12 @@ fn eval_binary(
 }
 
 fn eval_identifier(
-	frame: &mut StackFrame,
+	frame: Rc<RefCell<StackFrame>>,
 	allow_thunk: bool,
 	val: String,
-	position: &lexer::Position,
+	position: lexer::Position,
 ) -> Result<Value, error::Err> {
-	if let Some(value) = frame.get(&val) {
+	if let Some(value) = frame.borrow().get(&val) {
 		return Ok(value);
 	}
 	Err(error::Err {
@@ -769,15 +776,15 @@ fn eval_identifier(
 }
 
 fn eval_function_call(
-	frame: &mut StackFrame,
+	frame: Rc<RefCell<StackFrame>>,
 	allow_thunk: bool,
 	function: &Box<parser::Node>,
 	arguments: Vec<parser::Node>,
 ) -> Result<Value, error::Err> {
-	let fun = (function).eval(frame, false)?;
+	let fun = function.eval(Rc::clone(&frame), false)?;
 	let mut arg_results: Vec<Value> = Vec::new();
 	for arg in arguments {
-		arg_results.push(arg.eval(frame, false)?)
+		arg_results.push(arg.eval(Rc::clone(&frame), false)?)
 	}
 	return eval_ink_function(fun, allow_thunk, arg_results.clone());
 }
@@ -818,22 +825,22 @@ fn eval_ink_function(fun: Value, allow_thunk: bool, args: Vec<Value>) -> Result<
 }
 
 fn eval_match_expr(
-	frame: &mut StackFrame,
+	frame: Rc<RefCell<StackFrame>>,
 	allow_thunk: bool,
 	condition: &Box<parser::Node>,
 	clauses: Vec<parser::Node>,
 ) -> Result<Value, error::Err> {
-	let condition_val = condition.eval(frame, false)?;
+	let condition_val = condition.eval(Rc::clone(&frame), false)?;
 
 	// if let parser::Node::MatchExprNode{target} = clause {
 	// }
 	for clause in clauses {
 		if let parser::Node::MatchClauseNode { target, expression } = clause {
-			let target_val = target.eval(frame, false)?;
+			let target_val = target.eval(Rc::clone(&frame), false)?;
 			if condition_val == target_val {
 				// GoInk: match expression clauses are tail call optimized,
 				// so return a maybe ThunkValue
-				return expression.eval(frame, allow_thunk);
+				return expression.eval(Rc::clone(&frame), allow_thunk);
 			}
 		}
 	}
@@ -841,7 +848,7 @@ fn eval_match_expr(
 }
 
 fn eval_expression_list(
-	frame: &mut StackFrame,
+	frame: Rc<RefCell<StackFrame>>,
 	allow_thunk: bool,
 	expressions: Vec<parser::Node>,
 ) -> Result<Value, error::Err> {
@@ -850,13 +857,13 @@ fn eval_expression_list(
 		return Ok(NULL);
 	}
 
-	let call_frame = &mut StackFrame {
-		parent: Some(Box::new(frame.clone())),
+	let call_frame = Rc::new(RefCell::new(StackFrame {
+		parent: Some(frame),
 		vt: ValueTable::new(),
-	};
+	}));
 
 	for i in 0..length - 1 {
-		expressions[i].eval(call_frame, false)?;
+		expressions[i].eval(Rc::clone(&call_frame), false)?;
 	}
 
 	// GoInk: return values of expression lists are tail call optimized,
@@ -865,38 +872,38 @@ fn eval_expression_list(
 }
 
 fn eval_object_literal(
-	frame: &mut StackFrame,
+	frame: Rc<RefCell<StackFrame>>,
 	allow_thunk: bool,
 	entries: Vec<parser::Node>,
 ) -> Result<Value, error::Err> {
 	let mut obj = ValueTable::new();
 	for entry in entries {
 		if let parser::Node::ObjectEntryNode { key, val, .. } = entry {
-			let key_str = operand_to_string(*key, frame)?;
-			obj.insert(key_str, val.eval(frame, false)?);
+			let key_str = operand_to_string(*key, Rc::clone(&frame))?;
+			obj.insert(key_str, val.eval(Rc::clone(&frame), false)?);
 		}
 	}
 	Ok(Value::CompositeValue(obj))
 }
 
 fn eval_list_literal(
-	frame: &mut StackFrame,
+	frame: Rc<RefCell<StackFrame>>,
 	allow_thunk: bool,
 	vals: Vec<parser::Node>,
 ) -> Result<Value, error::Err> {
 	let mut list_val = ValueTable::new();
 	for (i, n) in vals.iter().enumerate() {
-		list_val.insert(i.to_string(), n.eval(frame, false)?);
+		list_val.insert(i.to_string(), n.eval(Rc::clone(&frame), false)?);
 	}
 	Ok(Value::CompositeValue(list_val))
 }
 
 impl parser::Node {
-	fn eval(&self, frame: &mut StackFrame, allow_thunk: bool) -> Result<Value, error::Err> {
+	fn eval(&self, frame: Rc<RefCell<StackFrame>>, allow_thunk: bool) -> Result<Value, error::Err> {
 		if let parser::Node::FunctionLiteralNode { .. } = self {
 			return Ok(Value::FunctionValue(FunctionValue {
 				defn: self.clone(),
-				parent_frame: frame.clone(),
+				parent_frame: frame,
 			}));
 		}
 		match &*self {
@@ -905,7 +912,7 @@ impl parser::Node {
 				operand,
 				position,
 				..
-			} => eval_unary(frame, allow_thunk, operator, operand, position),
+			} => eval_unary(frame, allow_thunk, *operator, operand, *position),
 			parser::Node::BinaryExprNode {
 				operator,
 				left_operand,
@@ -915,10 +922,10 @@ impl parser::Node {
 			} => eval_binary(
 				frame,
 				allow_thunk,
-				operator,
+				*operator,
 				left_operand,
 				right_operand,
-				position,
+				*position,
 			),
 			parser::Node::FunctionCallNode {
 				function,
@@ -941,7 +948,7 @@ impl parser::Node {
 			}
 			parser::Node::EmptyIdentifierNode { .. } => Ok(Value::EmptyValue {}),
 			parser::Node::IdentifierNode { val, position, .. } => {
-				eval_identifier(frame, allow_thunk, val.to_string(), position)
+				eval_identifier(frame, allow_thunk, val.to_string(), *position)
 			}
 			parser::Node::NumberLiteralNode { val, .. } => Ok(Value::NumberValue(*val)),
 			parser::Node::StringLiteralNode { val, .. } => Ok(Value::StringValue((*val).clone())),
@@ -1020,7 +1027,7 @@ type ValueTable = HashMap<String, Value>;
 // and recursively references other parent StackFrames internally.
 #[derive(Clone)]
 struct StackFrame {
-	pub parent: Option<Box<StackFrame>>,
+	pub parent: Option<Rc<RefCell<StackFrame>>>,
 	pub vt: ValueTable,
 }
 
@@ -1033,7 +1040,7 @@ impl StackFrame {
 		if let None = self.parent {
 			return None;
 		}
-		return self.parent.as_ref().unwrap().get(name);
+		return self.parent.as_ref().unwrap().borrow().get(name);
 	}
 
 	// GoInk: Set a value to the most recent call stack frame
@@ -1047,7 +1054,7 @@ impl StackFrame {
 			return;
 		}
 		if let Some(parent) = &mut self.parent {
-			parent.up(name, val)
+			parent.borrow_mut().up(name, val)
 		}
 	}
 }
@@ -1086,8 +1093,9 @@ impl Context<'_> {
 	fn eval(&mut self, nodes: Vec<parser::Node>, dump_frame: bool) -> Value {
 		self.engine.eval_lock.lock().unwrap();
 		let mut result = Value::EmptyValue {};
+		let frame = Rc::new(RefCell::new(self.frame.clone()));
 		for node in nodes.iter() {
-			let val = node.eval(&mut self.frame, false);
+			let val = node.eval(Rc::clone(&frame), false);
 			if let Err(err) = val {
 				self.log_err(err);
 				break;
@@ -1190,7 +1198,12 @@ impl fmt::Display for StackFrame {
 		}
 
 		if let Some(parent) = &self.parent {
-			return write!(f, "{{\n\t{}\n}} -prnt-> {}", entries.join("\n\t"), parent);
+			return write!(
+				f,
+				"{{\n\t{}\n}} -prnt-> {}",
+				entries.join("\n\t"),
+				parent.borrow()
+			);
 		}
 		return write!(f, "{{\n\t{}\n}} -prnt-> {}", entries.join("\n\t"), "*");
 	}
