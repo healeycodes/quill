@@ -7,6 +7,7 @@ use std::{
 	cmp,
 	collections::HashMap,
 	fmt, fs, io,
+	path::Path,
 	rc::Rc,
 	str,
 	sync::{Arc, Barrier, Mutex},
@@ -62,7 +63,9 @@ struct FunctionCallThunkValue {
 
 #[derive(Clone)]
 struct NativeFunctionValue {
-	// TODO
+	name: String,
+	exec: fn(&Context, Vec<Value>) -> Result<Value, error::Err>,
+	// ctx: Rc<RefCell<Context>>,
 }
 
 // GoInk: The singleton Null value is interned into a single value
@@ -98,7 +101,7 @@ impl fmt::Display for Value {
 			Value::FunctionCallThunkValue(ft) => {
 				write!(f, "Thunk of ({})", function_value_to_string(&ft.function))
 			}
-			_ => write!(f, "TODO"),
+			Value::NativeFunctionValue(nf) => write!(f, "Native Function ({})", nf.name),
 		}
 	}
 }
@@ -123,6 +126,13 @@ impl PartialEq for Value {
 				Value::NumberValue(n) => {
 					if let Value::NumberValue(o) = other {
 						*n as f64 == *o as f64
+					} else {
+						false
+					}
+				}
+				Value::StringValue(s) => {
+					if let Value::StringValue(o) = other {
+						s == o
 					} else {
 						false
 					}
@@ -183,7 +193,13 @@ impl PartialEq for Value {
 						false
 					}
 				}
-				_ => false,
+				Value::NativeFunctionValue(nf) => {
+					if let Value::NativeFunctionValue(o) = other {
+						nf.name == o.name
+					} else {
+						false
+					}
+				}
 			}
 		}
 	}
@@ -1086,7 +1102,7 @@ impl Engine<'_> {
 	}
 }
 
-// GoInk: eval takes a channel of Nodes to evaluate, and executes the Ink programs defined
+// GoInk: eval takes Nodes to evaluate, and executes the Ink programs defined
 // in the syntax tree. eval returns the last value of the last expression in the AST,
 // or an error if there was a runtime error.
 impl Context<'_> {
@@ -1161,10 +1177,14 @@ impl Context<'_> {
 	// GoInk: exec_path is a convenience function to exec() a program file in a given Context.
 	pub fn exec_path(&mut self, file_path: String) -> Result<Value, error::Err> {
 		// update cwd for any potential load() calls this file will make
-		// self.cwd = path.dir(file_path);
+		self.cwd = Path::new(&file_path)
+			.parent()
+			.unwrap()
+			.to_str()
+			.unwrap()
+			.to_string();
 		self.file = file_path;
 
-		// TODO: add a 'could not open' log message
 		let file_bytes = fs::read(self.file.to_string());
 		if let Err(err) = file_bytes {
 			let system_err = error::Err {
