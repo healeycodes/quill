@@ -62,10 +62,10 @@ struct FunctionCallThunkValue {
 }
 
 #[derive(Clone)]
-struct NativeFunctionValue {
+pub struct NativeFunctionValue {
 	name: String,
-	exec: fn(&Context, Vec<Value>) -> Result<Value, error::Err>,
-	// ctx: Rc<RefCell<Context>>,
+	exec: fn(Rc<RefCell<Context>>, Vec<Value>) -> Result<Value, error::Err>,
+	ctx: Rc<RefCell<Context>>,
 }
 
 // GoInk: The singleton Null value is interned into a single value
@@ -833,7 +833,9 @@ fn eval_ink_function(fun: Value, allow_thunk: bool, args: Vec<Value>) -> Result<
 			return unwrap_thunk(return_thunk);
 		}
 	}
-	if let Value::NativeFunctionValue { .. } = fun {}
+	if let Value::NativeFunctionValue(nfun) = fun {
+		return (nfun.exec)(nfun.ctx, args)
+	}
 	return Err(error::Err {
 		reason: error::ERR_RUNTIME,
 		message: format!("attempted to call a non-function value {}", fun),
@@ -1060,7 +1062,7 @@ impl StackFrame {
 	}
 
 	// GoInk: Set a value to the most recent call stack frame
-	fn set(&mut self, name: String, val: Value) {
+	pub fn set(&mut self, name: String, val: Value) {
 		self.vt.insert(name, val);
 	}
 	// GoInk: Up updates a value in the stack frame chain
@@ -1075,17 +1077,17 @@ impl StackFrame {
 	}
 }
 
-impl Engine<'_> {
+impl Engine {
 	// GoInk: create_contex creates and initializes a new Context tied to a given Engine.
-	pub fn create_context(&self) -> Context {
+	pub fn create_context(&self, engine: &Rc<RefCell<Engine>>) -> Context {
 		let ctx = Context {
 			cwd: String::new(),
 			file: String::new(),
-			engine: self,
-			frame: StackFrame {
+			engine: Rc::clone(&*engine),
+			frame: Rc::new(RefCell::new(StackFrame {
 				parent: Option::None,
 				vt: ValueTable::new(),
-			},
+			})),
 		};
 
 		// If first time creating Context in this Engine,
@@ -1105,11 +1107,11 @@ impl Engine<'_> {
 // GoInk: eval takes Nodes to evaluate, and executes the Ink programs defined
 // in the syntax tree. eval returns the last value of the last expression in the AST,
 // or an error if there was a runtime error.
-impl Context<'_> {
+impl Context {
 	fn eval(&mut self, nodes: Vec<parser::Node>, dump_frame: bool) -> Value {
-		self.engine.eval_lock.lock().unwrap();
+		self.engine.borrow_mut().eval_lock.lock().unwrap();
 		let mut result = Value::EmptyValue {};
-		let frame = Rc::new(RefCell::new(self.frame.clone()));
+		let frame = Rc::new(RefCell::clone(&self.frame));
 		for node in nodes.iter() {
 			let val = node.eval(Rc::clone(&frame), false);
 			if let Err(err) = val {
@@ -1148,7 +1150,7 @@ impl Context<'_> {
 			msg = msg + " in " + &self.file;
 		}
 
-		if self.engine.fatal_error {
+		if self.engine.borrow().fatal_error {
 			log::log_err(e.reason, &[msg])
 		} else {
 			log::log_safe_err(e.reason, &[msg])
@@ -1157,21 +1159,20 @@ impl Context<'_> {
 
 	// GoInk: dump prints the current state of the Context's global heap
 	fn dump(&self) {
-		log::log_debug(&["frame dump".to_string(), self.frame.to_string()])
+		log::log_debug(&["frame dump".to_string(), self.frame.borrow().to_string()])
 	}
 
 	// GoInk: exec runs an Ink program.
 	// This is the main way to invoke Ink programs from Go.
 	// exec blocks until the Ink program exits.
 	pub fn exec(&mut self, source: &[&str]) -> Result<Value, error::Err> {
-		let eng = self.engine;
-
 		let tokens: &mut Vec<lexer::Tok> = &mut Vec::new();
 		lexer::tokenize(tokens, source, true, true);
 		let nodes = parser::parse(tokens, true, true);
 
 		// TODO: surely tokenizing or parsing can cause errors we should raise
-		return Ok(self.eval(nodes, eng.debug.dump));
+		let dump = self.engine.borrow().debug.dump;
+		return Ok(self.eval(nodes, dump));
 	}
 
 	// GoInk: exec_path is a convenience function to exec() a program file in a given Context.
@@ -1237,7 +1238,7 @@ impl fmt::Display for StackFrame {
 //
 // Within an Engine, there may exist multiple Contexts that each contain different
 // execution environments, running concurrently under a single lock.
-pub struct Engine<'a> {
+pub struct Engine {
 	// Listeners keeps track of the concurrent threads of execution running
 	// in the Engine. Call `Engine.listeners.wait()` to block until all concurrent
 	// execution threads finish on an Engine.
@@ -1253,7 +1254,7 @@ pub struct Engine<'a> {
 	// canonicalized import path. This prevents recursive
 	// imports from crashing the interpreter and allows other
 	// nice functionality.
-	pub contexts: HashMap<String, &'a Context<'a>>,
+	pub contexts: HashMap<String, Context>,
 
 	// Only a single function may write to the stack frames
 	// at any moment.
@@ -1262,14 +1263,14 @@ pub struct Engine<'a> {
 
 // GoInk: Context represents a single, isolated execution context with its global heap,
 // imports, call stack, and cwd (working directory).
-pub struct Context<'a> {
+pub struct Context {
 	// cwd is an always-absolute path to current working dir (of module system)
 	cwd: String,
 	// currently executing file's path, if any
 	file: String,
-	engine: &'a Engine<'a>,
+	engine: Rc<RefCell<Engine>>,
 	// frame represents the Context's global heap
-	frame: StackFrame,
+	pub frame: Rc<RefCell<StackFrame>>,
 }
 
 // GoInk: PermissionsConfig defines Context's permissions to

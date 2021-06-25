@@ -1,21 +1,18 @@
-` Ink prime sieve `
+` naive implementation `
+fib := n => n :: {
+	0 -> 0
+	1 -> 1
+	_ -> fib(n - 1) + fib(n - 2)
+}
 
-` is a single number prime? `
-prime? := n => (
-	` is n coprime with nums < p? `
-	max := floor(pow(n, 0.5)) + 1
-	(ip := p => p :: {
-		max -> true
-		_ -> n % p :: {
-			0 -> false
-			_ -> ip(p + 1)
-		}
-	})(2)
+` memoized / dynamic programming implementation `
+memo := [0, 1]
+fibMemo := n => (
+	memo.(n) :: {
+		() -> memo.(n) := fibMemo(n - 1) + fibMemo(n - 2)
+	}
+	memo.(n)
 )
 
-` primes under N are numbers 2 .. N, filtered by prime? `
-getPrimesUnder := n => filter(range(2, n, 1), prime?)
-
-` log result `
-primes := getPrimesUnder(100)
-log(f('Primes under 100: {{ 0 }}', [stringList(primes)]))
+fib(20)
+fibMemo(20)
