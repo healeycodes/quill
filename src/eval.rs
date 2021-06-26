@@ -3,14 +3,12 @@ use crate::lexer;
 use crate::log;
 use crate::parser;
 use std::{
-	cell::RefCell,
 	cmp,
 	collections::HashMap,
 	fmt, fs, io,
 	path::Path,
-	rc::Rc,
 	str,
-	sync::{Arc, Barrier, Mutex},
+	sync::{Arc, Barrier, Mutex, RwLock},
 	thread,
 };
 
@@ -52,7 +50,7 @@ pub enum Value {
 #[derive(Clone)]
 struct FunctionValue {
 	defn: parser::Node, // FunctionLiteralNode
-	parent_frame: Rc<RefCell<StackFrame>>,
+	parent_frame: Arc<RwLock<StackFrame>>,
 }
 
 #[derive(Clone)]
@@ -64,8 +62,8 @@ struct FunctionCallThunkValue {
 #[derive(Clone)]
 pub struct NativeFunctionValue {
 	name: String,
-	exec: fn(Rc<RefCell<Context>>, Vec<Value>) -> Result<Value, error::Err>,
-	ctx: Rc<RefCell<Context>>,
+	exec: fn(Arc<RwLock<Context>>, Vec<Value>) -> Result<Value, error::Err>,
+	ctx: Arc<RwLock<Context>>,
 }
 
 // GoInk: The singleton Null value is interned into a single value
@@ -207,14 +205,14 @@ impl PartialEq for Value {
 
 fn operand_to_string(
 	right_operand: parser::Node,
-	frame: Rc<RefCell<StackFrame>>,
+	frame: Arc<RwLock<StackFrame>>,
 ) -> Result<String, error::Err> {
 	match right_operand {
 		parser::Node::IdentifierNode { val, .. } => return Ok(val),
 		parser::Node::StringLiteralNode { val, .. } => return Ok(String::from_utf8(val).unwrap()),
 		parser::Node::NumberLiteralNode { val, .. } => return Ok(n_to_s(val)),
 		_ => {
-			let right_evaluated_value = right_operand.eval(Rc::clone(&frame), false)?;
+			let right_evaluated_value = right_operand.eval(Arc::clone(&frame), false)?;
 			match right_evaluated_value {
 				Value::StringValue(s) => return Ok(String::from_utf8(s).unwrap()),
 				Value::NumberValue(n) => return Ok(nv_to_s(n)),
@@ -238,12 +236,12 @@ fn operand_to_string(
 fn unwrap_thunk(mut thunk: FunctionCallThunkValue) -> Result<Value, error::Err> {
 	let mut is_thunk = true;
 	while is_thunk {
-		let frame = Rc::new(RefCell::new(StackFrame {
-			parent: Some(Rc::clone(&thunk.function.parent_frame)),
+		let frame = Arc::new(RwLock::new(StackFrame {
+			parent: Some(Arc::clone(&thunk.function.parent_frame)),
 			vt: thunk.vt.clone(),
 		}));
 		if let parser::Node::FunctionLiteralNode { body, .. } = thunk.function.defn {
-			let v = body.eval(Rc::clone(&frame), true)?;
+			let v = body.eval(Arc::clone(&frame), true)?;
 
 			if let Value::FunctionCallThunkValue(fcallthunk) = v {
 				thunk = FunctionCallThunkValue {
@@ -260,13 +258,13 @@ fn unwrap_thunk(mut thunk: FunctionCallThunkValue) -> Result<Value, error::Err> 
 }
 
 fn eval_unary(
-	frame: Rc<RefCell<StackFrame>>,
+	frame: Arc<RwLock<StackFrame>>,
 	allow_thunk: bool,
 	operator: lexer::Kind,
 	operand: &Box<parser::Node>,
 	position: lexer::Position,
 ) -> Result<Value, error::Err> {
-	let operand = operand.eval(Rc::clone(&frame), false);
+	let operand = operand.eval(Arc::clone(&frame), false);
 	if let Err(err) = operand {
 		return Err(err);
 	} else if !matches!(operator, lexer::Token::NegationOp) {
@@ -294,7 +292,7 @@ fn eval_unary(
 }
 
 fn eval_binary(
-	frame: Rc<RefCell<StackFrame>>,
+	frame: Arc<RwLock<StackFrame>>,
 	allow_thunk: bool,
 	operator: lexer::Kind,
 	left_operand: &Box<parser::Node>,
@@ -312,8 +310,8 @@ fn eval_binary(
 					),
 				});
 			} else {
-				let right_value = right_operand.eval(Rc::clone(&frame), false)?;
-				frame.borrow_mut().set(val.clone(), right_value.clone());
+				let right_value = right_operand.eval(Arc::clone(&frame), false)?;
+				frame.write().unwrap().set(val.clone(), right_value.clone());
 				return Ok(right_value);
 			}
 		}
@@ -326,15 +324,15 @@ fn eval_binary(
 		} = &**left_operand
 		{
 			if *operator == lexer::Token::AccessorOp {
-				let mut left_value = left_operand.eval(Rc::clone(&frame), false)?;
-				let left_key = operand_to_string((**right_operand).clone(), Rc::clone(&frame))?;
+				let mut left_value = left_operand.eval(Arc::clone(&frame), false)?;
+				let left_key = operand_to_string((**right_operand).clone(), Arc::clone(&frame))?;
 				if let Value::CompositeValue(mut vt) = left_value {
 					let right_value = right_operand.eval(frame, false)?;
 					vt.insert(left_key, right_value);
 					return Ok(Value::CompositeValue(vt));
 				} else if let Value::StringValue(ref mut left_string) = left_value {
 					if let parser::Node::IdentifierNode { val, .. } = &**left_operand {
-						let right_value = right_operand.eval(Rc::clone(&frame), false)?;
+						let right_value = right_operand.eval(Arc::clone(&frame), false)?;
 						if let Value::StringValue(mut right_string) = right_value {
 							let right_num = left_key.parse::<i64>();
 							if let Err(right_num) = right_num {
@@ -356,13 +354,15 @@ fn eval_binary(
 									}
 								}
 								frame
-									.borrow_mut()
+									.write()
+									.unwrap()
 									.up(val.clone(), Value::StringValue(new_left_string.clone()));
 								return Ok(Value::StringValue(new_left_string));
 							} else if rn == left_string.len() {
 								left_string.append(&mut right_string);
 								frame
-									.borrow_mut()
+									.write()
+									.unwrap()
 									.up(val.clone(), Value::StringValue(left_string.clone()));
 								return Ok(Value::StringValue(left_string.clone()));
 							} else {
@@ -407,8 +407,8 @@ fn eval_binary(
 			}
 		}
 	} else if matches!(operator, lexer::Token::AccessorOp) {
-		let left_value = left_operand.eval(Rc::clone(&frame), false)?;
-		let right_value_str = operand_to_string((**right_operand).clone(), Rc::clone(&frame))?;
+		let left_value = left_operand.eval(Arc::clone(&frame), false)?;
+		let right_value_str = operand_to_string((**right_operand).clone(), Arc::clone(&frame))?;
 		if let Value::CompositeValue(ref left_value_composite) = left_value {
 			if !left_value_composite.contains_key(&right_value_str) {
 				return Ok(NULL);
@@ -445,8 +445,8 @@ fn eval_binary(
 		}
 	}
 
-	let left_value = left_operand.eval(Rc::clone(&frame), false)?;
-	let right_value = right_operand.eval(Rc::clone(&frame), false)?;
+	let left_value = left_operand.eval(Arc::clone(&frame), false)?;
+	let right_value = right_operand.eval(Arc::clone(&frame), false)?;
 	match operator {
 		lexer::Token::AddOp => {
 			match left_value {
@@ -777,12 +777,12 @@ fn eval_binary(
 }
 
 fn eval_identifier(
-	frame: Rc<RefCell<StackFrame>>,
+	frame: Arc<RwLock<StackFrame>>,
 	allow_thunk: bool,
 	val: String,
 	position: lexer::Position,
 ) -> Result<Value, error::Err> {
-	if let Some(value) = frame.borrow().get(&val) {
+	if let Some(value) = frame.read().unwrap().get(&val) {
 		return Ok(value);
 	}
 	Err(error::Err {
@@ -792,15 +792,15 @@ fn eval_identifier(
 }
 
 fn eval_function_call(
-	frame: Rc<RefCell<StackFrame>>,
+	frame: Arc<RwLock<StackFrame>>,
 	allow_thunk: bool,
 	function: &Box<parser::Node>,
 	arguments: Vec<parser::Node>,
 ) -> Result<Value, error::Err> {
-	let fun = function.eval(Rc::clone(&frame), false)?;
+	let fun = function.eval(Arc::clone(&frame), false)?;
 	let mut arg_results: Vec<Value> = Vec::new();
 	for arg in arguments {
-		arg_results.push(arg.eval(Rc::clone(&frame), false)?)
+		arg_results.push(arg.eval(Arc::clone(&frame), false)?)
 	}
 	return eval_ink_function(fun, allow_thunk, arg_results.clone());
 }
@@ -834,7 +834,7 @@ fn eval_ink_function(fun: Value, allow_thunk: bool, args: Vec<Value>) -> Result<
 		}
 	}
 	if let Value::NativeFunctionValue(nfun) = fun {
-		return (nfun.exec)(nfun.ctx, args)
+		return (nfun.exec)(nfun.ctx, args);
 	}
 	return Err(error::Err {
 		reason: error::ERR_RUNTIME,
@@ -843,22 +843,22 @@ fn eval_ink_function(fun: Value, allow_thunk: bool, args: Vec<Value>) -> Result<
 }
 
 fn eval_match_expr(
-	frame: Rc<RefCell<StackFrame>>,
+	frame: Arc<RwLock<StackFrame>>,
 	allow_thunk: bool,
 	condition: &Box<parser::Node>,
 	clauses: Vec<parser::Node>,
 ) -> Result<Value, error::Err> {
-	let condition_val = condition.eval(Rc::clone(&frame), false)?;
+	let condition_val = condition.eval(Arc::clone(&frame), false)?;
 
 	// if let parser::Node::MatchExprNode{target} = clause {
 	// }
 	for clause in clauses {
 		if let parser::Node::MatchClauseNode { target, expression } = clause {
-			let target_val = target.eval(Rc::clone(&frame), false)?;
+			let target_val = target.eval(Arc::clone(&frame), false)?;
 			if condition_val == target_val {
 				// GoInk: match expression clauses are tail call optimized,
 				// so return a maybe ThunkValue
-				return expression.eval(Rc::clone(&frame), allow_thunk);
+				return expression.eval(Arc::clone(&frame), allow_thunk);
 			}
 		}
 	}
@@ -866,7 +866,7 @@ fn eval_match_expr(
 }
 
 fn eval_expression_list(
-	frame: Rc<RefCell<StackFrame>>,
+	frame: Arc<RwLock<StackFrame>>,
 	allow_thunk: bool,
 	expressions: Vec<parser::Node>,
 ) -> Result<Value, error::Err> {
@@ -875,13 +875,13 @@ fn eval_expression_list(
 		return Ok(NULL);
 	}
 
-	let call_frame = Rc::new(RefCell::new(StackFrame {
+	let call_frame = Arc::new(RwLock::new(StackFrame {
 		parent: Some(frame),
 		vt: ValueTable::new(),
 	}));
 
 	for i in 0..length - 1 {
-		expressions[i].eval(Rc::clone(&call_frame), false)?;
+		expressions[i].eval(Arc::clone(&call_frame), false)?;
 	}
 
 	// GoInk: return values of expression lists are tail call optimized,
@@ -890,34 +890,34 @@ fn eval_expression_list(
 }
 
 fn eval_object_literal(
-	frame: Rc<RefCell<StackFrame>>,
+	frame: Arc<RwLock<StackFrame>>,
 	allow_thunk: bool,
 	entries: Vec<parser::Node>,
 ) -> Result<Value, error::Err> {
 	let mut obj = ValueTable::new();
 	for entry in entries {
 		if let parser::Node::ObjectEntryNode { key, val, .. } = entry {
-			let key_str = operand_to_string(*key, Rc::clone(&frame))?;
-			obj.insert(key_str, val.eval(Rc::clone(&frame), false)?);
+			let key_str = operand_to_string(*key, Arc::clone(&frame))?;
+			obj.insert(key_str, val.eval(Arc::clone(&frame), false)?);
 		}
 	}
 	Ok(Value::CompositeValue(obj))
 }
 
 fn eval_list_literal(
-	frame: Rc<RefCell<StackFrame>>,
+	frame: Arc<RwLock<StackFrame>>,
 	allow_thunk: bool,
 	vals: Vec<parser::Node>,
 ) -> Result<Value, error::Err> {
 	let mut list_val = ValueTable::new();
 	for (i, n) in vals.iter().enumerate() {
-		list_val.insert(i.to_string(), n.eval(Rc::clone(&frame), false)?);
+		list_val.insert(i.to_string(), n.eval(Arc::clone(&frame), false)?);
 	}
 	Ok(Value::CompositeValue(list_val))
 }
 
 impl parser::Node {
-	fn eval(&self, frame: Rc<RefCell<StackFrame>>, allow_thunk: bool) -> Result<Value, error::Err> {
+	fn eval(&self, frame: Arc<RwLock<StackFrame>>, allow_thunk: bool) -> Result<Value, error::Err> {
 		if let parser::Node::FunctionLiteralNode { .. } = self {
 			return Ok(Value::FunctionValue(FunctionValue {
 				defn: self.clone(),
@@ -1044,8 +1044,8 @@ type ValueTable = HashMap<String, Value>;
 // GoInk: StackFrame represents the heap of variables local to a particular function call frame,
 // and recursively references other parent StackFrames internally.
 #[derive(Clone)]
-struct StackFrame {
-	pub parent: Option<Rc<RefCell<StackFrame>>>,
+pub struct StackFrame {
+	pub parent: Option<Arc<RwLock<StackFrame>>>,
 	pub vt: ValueTable,
 }
 
@@ -1058,7 +1058,7 @@ impl StackFrame {
 		if let None = self.parent {
 			return None;
 		}
-		return self.parent.as_ref().unwrap().borrow().get(name);
+		return self.parent.as_ref().unwrap().read().unwrap().get(name);
 	}
 
 	// GoInk: Set a value to the most recent call stack frame
@@ -1072,19 +1072,19 @@ impl StackFrame {
 			return;
 		}
 		if let Some(parent) = &mut self.parent {
-			parent.borrow_mut().up(name, val)
+			parent.write().unwrap().up(name, val)
 		}
 	}
 }
 
 impl Engine {
 	// GoInk: create_contex creates and initializes a new Context tied to a given Engine.
-	pub fn create_context(&self, engine: &Rc<RefCell<Engine>>) -> Context {
+	pub fn create_context(&self, engine: &Arc<RwLock<Engine>>) -> Context {
 		let ctx = Context {
 			cwd: String::new(),
 			file: String::new(),
-			engine: Rc::clone(&*engine),
-			frame: Rc::new(RefCell::new(StackFrame {
+			engine: Arc::clone(&*engine),
+			frame: Arc::new(RwLock::new(StackFrame {
 				parent: Option::None,
 				vt: ValueTable::new(),
 			})),
@@ -1109,11 +1109,10 @@ impl Engine {
 // or an error if there was a runtime error.
 impl Context {
 	fn eval(&mut self, nodes: Vec<parser::Node>, dump_frame: bool) -> Value {
-		self.engine.borrow_mut().eval_lock.lock().unwrap();
+		self.engine.write().unwrap().eval_lock.lock().unwrap();
 		let mut result = Value::EmptyValue {};
-		let frame = Rc::new(RefCell::clone(&self.frame));
 		for node in nodes.iter() {
-			let val = node.eval(Rc::clone(&frame), false);
+			let val = node.eval(self.frame.clone(), false);
 			if let Err(err) = val {
 				self.log_err(err);
 				break;
@@ -1129,18 +1128,21 @@ impl Context {
 
 	// GoInk: exec_listener queues an asynchronous callback task to the Engine behind the Context.
 	// Callbacks registered this way will also run with the Engine's execution lock.
-	// fn exec_listener(&self, callback: fn()) {
-	// 	self.engine.listeners
-	// 	// ctx.Engine.Listeners.Add(1)
-	// 	go func() {
-	// 		defer ctx.Engine.Listeners.Done()
+	fn exec_listener(&self, callback: fn()) {
+		let mut writable = self.engine.write().unwrap();
+		let mut listeners = writable.listeners.write().unwrap();
+		*listeners += 1;
 
-	// 		ctx.Engine.evalLock.Lock()
-	// 		defer ctx.Engine.evalLock.Unlock()
+		let eng = self.engine.clone();
+		tokio::spawn(async move {
+			let writable_eng = eng.write().unwrap();
+			let eval_lock = writable_eng.eval_lock.lock().unwrap();
+			callback();
 
-	// 		callback()
-	// 	}()
-	// }
+			let mut listeners = writable_eng.listeners.write().unwrap();
+			*listeners -= 1;
+		});
+	}
 
 	// GoInk: log_err logs an Err (interpreter error) according to the configurations
 	// specified in the Context's Engine.
@@ -1150,7 +1152,7 @@ impl Context {
 			msg = msg + " in " + &self.file;
 		}
 
-		if self.engine.borrow().fatal_error {
+		if self.engine.read().unwrap().fatal_error {
 			log::log_err(e.reason, &[msg])
 		} else {
 			log::log_safe_err(e.reason, &[msg])
@@ -1159,7 +1161,10 @@ impl Context {
 
 	// GoInk: dump prints the current state of the Context's global heap
 	fn dump(&self) {
-		log::log_debug(&["frame dump".to_string(), self.frame.borrow().to_string()])
+		log::log_debug(&[
+			"frame dump".to_string(),
+			self.frame.read().unwrap().to_string(),
+		])
 	}
 
 	// GoInk: exec runs an Ink program.
@@ -1171,7 +1176,7 @@ impl Context {
 		let nodes = parser::parse(tokens, true, true);
 
 		// TODO: surely tokenizing or parsing can cause errors we should raise
-		let dump = self.engine.borrow().debug.dump;
+		let dump = self.engine.read().unwrap().debug.dump;
 		return Ok(self.eval(nodes, dump));
 	}
 
@@ -1223,7 +1228,7 @@ impl fmt::Display for StackFrame {
 				f,
 				"{{\n\t{}\n}} -prnt-> {}",
 				entries.join("\n\t"),
-				parent.borrow()
+				parent.read().unwrap()
 			);
 		}
 		return write!(f, "{{\n\t{}\n}} -prnt-> {}", entries.join("\n\t"), "*");
@@ -1242,7 +1247,7 @@ pub struct Engine {
 	// Listeners keeps track of the concurrent threads of execution running
 	// in the Engine. Call `Engine.listeners.wait()` to block until all concurrent
 	// execution threads finish on an Engine.
-	pub listeners: Arc<Barrier>,
+	pub listeners: RwLock<i32>,
 
 	// If fatal_error is true, an error will halt the interpreter
 	pub fatal_error: bool,
@@ -1258,7 +1263,7 @@ pub struct Engine {
 
 	// Only a single function may write to the stack frames
 	// at any moment.
-	pub eval_lock: Mutex<i32>,
+	pub eval_lock: Mutex<bool>,
 }
 
 // GoInk: Context represents a single, isolated execution context with its global heap,
@@ -1268,9 +1273,9 @@ pub struct Context {
 	cwd: String,
 	// currently executing file's path, if any
 	file: String,
-	engine: Rc<RefCell<Engine>>,
+	engine: Arc<RwLock<Engine>>,
 	// frame represents the Context's global heap
-	pub frame: Rc<RefCell<StackFrame>>,
+	pub frame: Arc<RwLock<StackFrame>>,
 }
 
 // GoInk: PermissionsConfig defines Context's permissions to

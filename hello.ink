@@ -16,3 +16,10 @@ fibMemo := n => (
 
 fib(20)
 fibMemo(20)
+
+	
+factorial := n => n :: {
+    0 -> 1
+    _ -> n * factorial(n-1)
+}
+factorial(5)

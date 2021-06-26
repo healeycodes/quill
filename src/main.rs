@@ -8,15 +8,15 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     env,
-    rc::Rc,
-    sync::{Arc, Barrier, Mutex},
+    sync::{Arc, Barrier, Mutex, RwLock},
 };
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args: Vec<String> = env::args().collect();
     let file_path = &args[1];
-    let eng = Rc::new(RefCell::new(eval::Engine {
-        listeners: Arc::new(Barrier::new(0)),
+    let eng = Arc::new(RwLock::new(eval::Engine {
+        listeners: RwLock::new(0),
         fatal_error: false,
         permissions: eval::PermissionsConfig {
             read: true,
@@ -29,10 +29,10 @@ fn main() {
             parse: true,
             dump: true,
         },
-        eval_lock: Mutex::new(0),
+        eval_lock: Mutex::new(false),
         contexts: HashMap::new(),
     }));
-    let mut ctx = eng.borrow_mut().create_context(&eng);
+    let mut ctx = eng.write().unwrap().create_context(&eng);
     let result = ctx.exec_path(file_path.to_string());
 
     println!("{}", result.unwrap());
