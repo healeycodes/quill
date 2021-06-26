@@ -3,6 +3,7 @@ use crate::lexer;
 use crate::log;
 use crate::parser;
 use std::{
+	cell::Cell,
 	cmp,
 	collections::HashMap,
 	fmt, fs, io,
@@ -62,12 +63,12 @@ struct FunctionCallThunkValue {
 #[derive(Clone)]
 pub struct NativeFunctionValue {
 	name: String,
-	exec: fn(Arc<RwLock<Context>>, Vec<Value>) -> Result<Value, error::Err>,
-	ctx: Arc<RwLock<Context>>,
+	exec: fn(Arc<Context>, Vec<Value>) -> Result<Value, error::Err>,
+	ctx: Arc<Context>,
 }
 
 // GoInk: The singleton Null value is interned into a single value
-const NULL: Value = Value::NullValue(0);
+pub const NULL: Value = Value::NullValue(0);
 
 impl fmt::Display for Value {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -806,7 +807,11 @@ fn eval_function_call(
 }
 
 // GoInk: call into an Ink callback function synchronously
-fn eval_ink_function(fun: Value, allow_thunk: bool, args: Vec<Value>) -> Result<Value, error::Err> {
+pub fn eval_ink_function(
+	fun: Value,
+	allow_thunk: bool,
+	args: Vec<Value>,
+) -> Result<Value, error::Err> {
 	if let Value::FunctionValue(ref funv) = fun {
 		let mut arg_value_table = ValueTable::new();
 		if let parser::Node::FunctionLiteralNode { arguments, .. } = &funv.defn {
@@ -1128,17 +1133,17 @@ impl Context {
 
 	// GoInk: exec_listener queues an asynchronous callback task to the Engine behind the Context.
 	// Callbacks registered this way will also run with the Engine's execution lock.
-	fn exec_listener(&self, callback: fn()) {
-		let mut writable = self.engine.write().unwrap();
+	pub fn exec_listener(&mut self, callback: Mutex<Cell<Fn()>>) {
+		let writable = self.engine.write().unwrap();
 		let mut listeners = writable.listeners.write().unwrap();
 		*listeners += 1;
 
 		let eng = self.engine.clone();
+		let _self = Arc::new(Mutex::new(*self));
 		tokio::spawn(async move {
 			let writable_eng = eng.write().unwrap();
-			let eval_lock = writable_eng.eval_lock.lock().unwrap();
-			callback();
-
+			writable_eng.eval_lock.lock().unwrap();
+			callback.lock().unwrap()();
 			let mut listeners = writable_eng.listeners.write().unwrap();
 			*listeners -= 1;
 		});
@@ -1146,7 +1151,7 @@ impl Context {
 
 	// GoInk: log_err logs an Err (interpreter error) according to the configurations
 	// specified in the Context's Engine.
-	fn log_err(&self, e: error::Err) {
+	pub fn log_err(&self, e: error::Err) {
 		let mut msg = e.message;
 		if self.file != "" {
 			msg = msg + " in " + &self.file;
@@ -1171,12 +1176,11 @@ impl Context {
 	// This is the main way to invoke Ink programs from Go.
 	// exec blocks until the Ink program exits.
 	pub fn exec(&mut self, source: &[&str]) -> Result<Value, error::Err> {
+		let dump = self.engine.read().unwrap().debug.dump;
 		let tokens: &mut Vec<lexer::Tok> = &mut Vec::new();
 		lexer::tokenize(tokens, source, true, true);
 		let nodes = parser::parse(tokens, true, true);
 
-		// TODO: surely tokenizing or parsing can cause errors we should raise
-		let dump = self.engine.read().unwrap().debug.dump;
 		return Ok(self.eval(nodes, dump));
 	}
 
@@ -1273,7 +1277,7 @@ pub struct Context {
 	cwd: String,
 	// currently executing file's path, if any
 	file: String,
-	engine: Arc<RwLock<Engine>>,
+	pub engine: Arc<RwLock<Engine>>,
 	// frame represents the Context's global heap
 	pub frame: Arc<RwLock<StackFrame>>,
 }
