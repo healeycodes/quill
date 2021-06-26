@@ -54,7 +54,7 @@ pub enum Value {
 }
 
 #[derive(Clone)]
-struct FunctionValue {
+pub struct FunctionValue {
 	defn: parser::Node, // FunctionLiteralNode
 	parent_frame: Arc<RwLock<StackFrame>>,
 }
@@ -90,13 +90,7 @@ impl fmt::Display for Value {
 			}
 			Value::BooleanValue(b) => write!(f, "{}", b),
 			Value::NullValue(_) => write!(f, "()"),
-			Value::CompositeValue(vt) => {
-				let mut entries: Vec<String> = Vec::new();
-				for (key, value) in vt {
-					entries.push(format!("{}: {}", key, value))
-				}
-				write!(f, "{{{}}}", entries.join(", "))
-			}
+			Value::CompositeValue(vt) => write!(f, "{}", value_table_to_string(vt)),
 			Value::FunctionValue(fv) => {
 				write!(f, "{}", function_value_to_string(&fv))
 			}
@@ -106,6 +100,14 @@ impl fmt::Display for Value {
 			Value::NativeFunctionValue(nf) => write!(f, "Native Function ({})", nf.name),
 		}
 	}
+}
+
+pub fn value_table_to_string(vt: &ValueTable) -> String {
+	let mut entries: Vec<String> = Vec::new();
+	for (key, value) in vt {
+		entries.push(format!("{}: {}", key, value))
+	}
+	return format!("{{{}}}", entries.join(", "));
 }
 
 fn function_value_to_string(fv: &FunctionValue) -> String {
@@ -231,7 +233,7 @@ pub fn n_to_s(f: f64) -> String {
 }
 
 // GoInk: n_to_s for NumberValue type
-fn nv_to_s(v: f64) -> String {
+pub fn nv_to_s(v: f64) -> String {
 	return n_to_s(v);
 }
 
@@ -305,7 +307,7 @@ impl Engine {
 				parent: Option::None,
 				vt: ValueTable::new(),
 			})),
-			channel: tokio::sync::mpsc::unbounded_channel::<Message>(),
+			event_channel: tokio::sync::mpsc::unbounded_channel::<Message>(),
 		};
 		ctx.load_environment();
 
@@ -1193,11 +1195,10 @@ impl Context {
 		let sync_result = Ok(self.eval(nodes, dump));
 		let mut last_async_result: Result<Value, error::Err>;
 
-		while let Some(message) = self.channel.1.recv().await {
+		while let Some(message) = self.event_channel.1.recv().await {
 			let eng = self.engine.write().unwrap();
 			let eval_lock = eng.eval_lock.lock().unwrap();
 
-			println!("GOT msg");
 			match message {
 				Message::InkFunctionCallback(ink_func) => {
 					last_async_result = self.eval_ink_function(ink_func.0, ink_func.1, ink_func.2)
@@ -1224,6 +1225,8 @@ impl Context {
 			if eng.listeners.fetch_sub(1, SeqCst) == 1 {
 				return last_async_result;
 			}
+			drop(eval_lock);
+			drop(eng);
 		}
 
 		sync_result
@@ -1325,8 +1328,8 @@ pub struct Context {
 	pub engine: Arc<RwLock<Engine>>,
 	// frame represents the Context's global heap
 	pub frame: Arc<RwLock<StackFrame>>,
-	// Tokio event channel
-	pub channel: (
+	// the results of async events
+	pub event_channel: (
 		tokio::sync::mpsc::UnboundedSender<Message>,
 		tokio::sync::mpsc::UnboundedReceiver<Message>,
 	),
