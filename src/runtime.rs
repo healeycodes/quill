@@ -8,7 +8,7 @@ use std::sync::{
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::{sleep, Duration};
 
-pub const functions: &'static [&'static str] = &["out", "time", "wait", "string"];
+pub const functions: &'static [&'static str] = &["out", "time", "wait", "string", "char"];
 
 impl eval::Context {
     // GoInk: load_environment loads all builtins (functions and constants) to a given Context.
@@ -32,7 +32,7 @@ impl eval::Context {
         match name.as_str() {
             // "load" => ink_load
 
-            // // interfaces
+            // interfaces
             // "args" => inkArgs,
             // "in"=> inkIn,
             "out" => return self.ink_out(in_values),
@@ -51,7 +51,7 @@ impl eval::Context {
             // "exec"=> inkExec,
             // "env"=> inkEnv,
             // "exit"=> inkExit,
-            // // math
+            // math
             // "sin"=> inkSin,
             // "cos"=> inkCos,
             // "asin"=> inkAsin,
@@ -59,12 +59,12 @@ impl eval::Context {
             // "pow"=> inkPow,
             // "ln"=> inkLn,
             // "floor"=> inkFloor,
-            // // type conversions
+            // type conversions
             "string" => return self.ink_string(in_values),
             // "number"=> inkNumber,
             // "point"=> inkPoint,
-            // "char"=> inkChar,
-            // // introspection
+            "char" => return self.ink_char(in_values),
+            // introspection
             // "type"=> inkType,
             // "len"=> inkLen,
             // "keys"=> inkKeys,
@@ -160,6 +160,23 @@ impl eval::Context {
                 Ok(eval::Value::StringValue("(function)".as_bytes().to_vec()))
             }
             _ => Ok(eval::Value::StringValue(vec![])),
+        }
+    }
+
+    fn ink_char(&self, in_values: Vec<eval::Value>) -> Result<eval::Value, error::Err> {
+        if in_values.len() < 1 {
+            return Err(error::Err {
+                reason: error::ERR_RUNTIME,
+                message: "char() takes 1 argument".to_string(),
+            });
+        }
+        if let eval::Value::NumberValue(n) = in_values[0] {
+            return Ok(eval::Value::StringValue(vec![n as u8]));
+        } else {
+            return Err(error::Err {
+                reason: error::ERR_RUNTIME,
+                message: format!("char() takes a number argument, got {}", in_values[0]),
+            });
         }
     }
 }
