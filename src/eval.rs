@@ -2,21 +2,17 @@ use crate::error;
 use crate::lexer;
 use crate::log;
 use crate::parser;
-use crate::runtime;
 use std::{
-	cell::Cell,
 	cmp,
 	collections::HashMap,
-	fmt, fs, io,
+	fmt, fs,
 	path::Path,
 	str,
 	sync::{
 		atomic::{AtomicI32, Ordering::SeqCst},
-		Arc, Barrier, Mutex, RwLock,
+		Arc, Mutex, RwLock,
 	},
-	thread,
 };
-use tokio::sync::mpsc;
 
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -60,7 +56,7 @@ pub struct FunctionValue {
 }
 
 #[derive(Clone)]
-struct FunctionCallThunkValue {
+pub struct FunctionCallThunkValue {
 	vt: ValueTable,
 	function: FunctionValue,
 }
@@ -148,8 +144,8 @@ impl PartialEq for Value {
 						false
 					}
 				}
-				Value::NullValue(b) => {
-					if let Value::NullValue(o) = other {
+				Value::NullValue(_b) => {
+					if let Value::NullValue(_o) = other {
 						true
 					} else {
 						false
@@ -336,7 +332,7 @@ pub enum Message {
 // or an error if there was a runtime error.
 impl Context {
 	fn eval(&mut self, nodes: Vec<parser::Node>, dump_frame: bool) -> Value {
-		self.engine.write().unwrap().eval_lock.lock().unwrap();
+		// TODO: eval lock here?
 		let mut result = Value::EmptyValue {};
 		for node in nodes.iter() {
 			let val = self.node_eval(&*node, self.frame.clone(), false);
@@ -488,7 +484,7 @@ impl Context {
 	fn eval_unary(
 		&self,
 		frame: Arc<RwLock<StackFrame>>,
-		allow_thunk: bool,
+		_allow_thunk: bool,
 		operator: lexer::Kind,
 		operand: &Box<parser::Node>,
 		position: lexer::Position,
@@ -523,11 +519,11 @@ impl Context {
 	fn eval_binary(
 		&self,
 		frame: Arc<RwLock<StackFrame>>,
-		allow_thunk: bool,
+		_allow_thunk: bool,
 		operator: lexer::Kind,
 		left_operand: &Box<parser::Node>,
 		right_operand: &Box<parser::Node>,
-		position: lexer::Position,
+		_position: lexer::Position,
 	) -> Result<Value, error::Err> {
 		if matches!(operator, lexer::Token::DefineOp) {
 			if let parser::Node::IdentifierNode { val, position, .. } = &**left_operand {
@@ -569,7 +565,7 @@ impl Context {
 								self.node_eval(&**right_operand, Arc::clone(&frame), false)?;
 							if let Value::StringValue(mut right_string) = right_value {
 								let right_num = left_key.parse::<i64>();
-								if let Err(right_num) = right_num {
+								if let Err(_right_num) = right_num {
 									return Err(error::Err{
 										reason: error::ERR_RUNTIME,
 										message: format!("while accessing string {} at an index, found non-integer index {} [{}]",
@@ -579,7 +575,7 @@ impl Context {
 								}
 								let rn = right_num.unwrap() as usize;
 								let mut new_left_string = left_string.clone();
-								if 0 <= rn && rn < left_string.len() {
+								if 0 == rn && rn < left_string.len() {
 									for (i, r) in left_string.iter().enumerate() {
 										if rn + i < left_string.len() {
 											new_left_string[rn + i] = *r
@@ -651,7 +647,7 @@ impl Context {
 				return Ok((*left_value_composite.get(&right_value_str).unwrap()).clone());
 			} else if let Value::StringValue(left_string) = left_value {
 				let right_num = right_value_str.parse::<i64>();
-				if let Err(right_num) = right_num {
+				if let Err(_right_num) = right_num {
 					return Err(error::Err {
 						reason: error::ERR_RUNTIME,
 						message: format!(
@@ -663,7 +659,7 @@ impl Context {
 					});
 				}
 				let rn = right_num.unwrap() as usize;
-				if 0 <= rn && rn < left_string.len() {
+				if 0 == rn && rn < left_string.len() {
 					return Ok(Value::StringValue([left_string[rn]].to_vec()));
 				}
 				return Ok(NULL);
@@ -1017,7 +1013,7 @@ impl Context {
 	fn eval_identifier(
 		&self,
 		frame: Arc<RwLock<StackFrame>>,
-		allow_thunk: bool,
+		_allow_thunk: bool,
 		val: String,
 		position: lexer::Position,
 	) -> Result<Value, error::Err> {
@@ -1131,7 +1127,7 @@ impl Context {
 	fn eval_object_literal(
 		&self,
 		frame: Arc<RwLock<StackFrame>>,
-		allow_thunk: bool,
+		_allow_thunk: bool,
 		entries: Vec<parser::Node>,
 	) -> Result<Value, error::Err> {
 		let mut obj = ValueTable::new();
@@ -1147,7 +1143,7 @@ impl Context {
 	fn eval_list_literal(
 		&self,
 		frame: Arc<RwLock<StackFrame>>,
-		allow_thunk: bool,
+		_allow_thunk: bool,
 		vals: Vec<parser::Node>,
 	) -> Result<Value, error::Err> {
 		let mut list_val = ValueTable::new();
@@ -1219,7 +1215,6 @@ impl Context {
 						last_async_result = result;
 					}
 				}
-				_ => unimplemented!(),
 			}
 
 			if eng.listeners.fetch_sub(1, SeqCst) == 1 {

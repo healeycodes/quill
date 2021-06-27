@@ -8,13 +8,13 @@ use std::sync::{
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::{sleep, Duration};
 
-pub const functions: &'static [&'static str] = &["out", "time", "wait", "string", "char"];
+pub const FUNCTIONS: &'static [&'static str] = &["out", "time", "wait", "string", "char"];
 
 impl eval::Context {
     // GoInk: load_environment loads all builtins (functions and constants) to a given Context.
     pub fn load_environment(&self) {
         let mut frame = self.frame.write().unwrap();
-        for f in functions {
+        for f in FUNCTIONS {
             frame.set(
                 f.to_string(),
                 eval::Value::NativeFunctionValue(eval::NativeFunctionValue {
@@ -85,7 +85,7 @@ impl eval::Context {
         });
     }
 
-    fn ink_time(&self, in_values: Vec<eval::Value>) -> Result<eval::Value, error::Err> {
+    fn ink_time(&self, _in_values: Vec<eval::Value>) -> Result<eval::Value, error::Err> {
         let start = SystemTime::now();
         let since_the_epoch = start
             .duration_since(UNIX_EPOCH)
@@ -125,7 +125,7 @@ impl eval::Context {
         let sender = self.event_channel.0.clone();
         tokio::spawn(async move {
             sleep(Duration::from_millis(secs)).await;
-            sender.send(eval::Message::InkFunctionCallback((
+            let _result = sender.send(eval::Message::InkFunctionCallback((
                 in_values[1].clone(),
                 false,
                 vec![],

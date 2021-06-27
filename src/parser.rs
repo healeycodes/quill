@@ -776,46 +776,6 @@ fn parse_match_body(tokens: &[lexer::Tok]) -> (Result<Vec<Node>, error::Err>, us
     (Ok(clauses), idx)
 }
 
-fn parse_match_call(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
-    let (atom, mut idx) = parse_expression(tokens);
-    if let Err(atom) = atom {
-        return (Err(atom), 0);
-    }
-
-    guard_unexpected_input_end!(tokens, idx);
-
-    if tokens[idx].kind != lexer::Token::CaseArrow {
-        return (
-            Err(error::Err {
-                reason: error::ERR_SYNTAX,
-                message: format!(
-                    "expected {}, but got {}",
-                    lexer::Token::CaseArrow,
-                    tokens[idx]
-                ),
-            }),
-            0,
-        );
-    }
-    idx += 1; // GoInk: CaseArrow
-
-    guard_unexpected_input_end!(tokens, idx);
-
-    let (expr, incr) = parse_expression(&tokens[idx..]);
-    if let Err(expr) = expr {
-        return (Err(expr), 0);
-    }
-    idx += incr;
-
-    (
-        Ok(Node::MatchClauseNode {
-            target: Box::new(atom.unwrap()),
-            expression: Box::new(expr.unwrap()),
-        }),
-        idx,
-    )
-}
-
 fn parse_match_clause(tokens: &[lexer::Tok]) -> (Result<Node, error::Err>, usize) {
     let (atom, mut idx) = parse_expression(tokens);
     if let Err(atom) = atom {
