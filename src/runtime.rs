@@ -103,8 +103,9 @@ impl eval::Context {
             });
         }
         let secs: u64;
+
         if let eval::Value::NumberValue(n) = in_values[0] {
-            secs = n as u64 * 1000
+            secs = (n * 1000.0) as u64
         } else {
             return Err(error::Err {
                 reason: error::ERR_RUNTIME,
@@ -124,7 +125,6 @@ impl eval::Context {
         let sender = self.event_channel.0.clone();
         tokio::spawn(async move {
             sleep(Duration::from_millis(secs)).await;
-            println!("{}", in_values[1].clone());
             sender.send(eval::Message::InkFunctionCallback((
                 in_values[1].clone(),
                 false,
