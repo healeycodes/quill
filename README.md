@@ -1,6 +1,6 @@
 # ✒️ Quill
 
-_This project is paused for now as I've got everything out of it that I wanted to. However, pull-requests/fixes are welcome and I will thoughtfully engage with them._
+_This project is paused for now as I've got everything out of it that I wanted to (to learn some Rust, to learn the Ink source code). However, pull-requests/fixes are welcome and I will thoughtfully engage with them._
 
 <br>
 
