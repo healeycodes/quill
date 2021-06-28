@@ -8,7 +8,7 @@ Quill is an in-progress Rust port of [thesephist/ink](https://github.com/theseph
 
 The variable/function naming, as well as the code organization, tries to stick closely to the Go project. This way, patches that are added to Ink and be ported here. Many comments are lifted straight from the Go project (they start with `GoInk:`).
 
-You many also be interested in [thesephist/schrift](https://github.com/thesephist/schrift) which is a more experimental runtime for Ink, focused on perf and instrumentation.
+You may also be interested in [thesephist/schrift](https://github.com/thesephist/schrift) which is a more experimental runtime for Ink, focused on perf and instrumentation.
 
 <br>
 
