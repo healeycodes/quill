@@ -1,10 +1,16 @@
 # ✒️ Quill
 
-Quill is a port of [Ink](https://github.com/thesephist/ink) (a minimal programming language inspired by modern JavaScript and Go, with functional style).
+Quill is an in-progress port of [Ink](https://github.com/thesephist/ink) (a minimal programming language inspired by modern JavaScript and Go, with functional style).
 
 <br>
 
 This project is paused for now as I've got everything out of it that I wanted to. However, pull-requests/fixes are welcome and I will thoughtfully engage with them.
+
+<br>
+
+:building_construction: Current bug :building_construction:
+
+There are issues with defining (indexes of lists and keys of composite values)
 
 <br>
 

@@ -5,7 +5,6 @@ mod log;
 mod parser;
 mod runtime;
 use std::{
-    cell::RefCell,
     collections::HashMap,
     env,
     sync::{Arc, Barrier, Mutex, RwLock, atomic::AtomicI32},

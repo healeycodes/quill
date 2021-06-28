@@ -1,5 +1,15 @@
 log := msg => out(string(msg) + char(10))
 
+` vars `
+a := 'Hello, World!'
+log(a)
+a := true
+log(a)
+
+` lists `
+b := [1, 2, 3]
+log(b)
+
 ` recursive via tail call optimization `
 factorial := n => n :: {
     0 -> 1
@@ -28,6 +38,4 @@ observation := {
 }
 
 log(observation.weather)
-observation.('weather') := 'Raining'
-log(observation.weather)
-log(observation.observedAt) ` composite value stringing `
+log(observation.observedAt) ` composite value to_string `

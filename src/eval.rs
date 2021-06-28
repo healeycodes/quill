@@ -307,15 +307,7 @@ impl Engine {
 		};
 		ctx.load_environment();
 
-		// If first time creating Context in this Engine,
-		// initialize the Contexts map
-		// TODO: how to check if HashMap is initialized in rust?
-		// if eng.contexts == nil {
-		// eng.contexts = HashMap::new();
-		// }
-
-		// ctx.reset_wd()
-
+		// TODO: ctx.reset_wd()
 		ctx
 	}
 }
@@ -460,7 +452,7 @@ impl Context {
 	// GoInk: unwrap_thunk expands out a recursive structure of thunks
 	// into a flat for loop control structure
 	fn unwrap_thunk(&self, mut thunk: FunctionCallThunkValue) -> Result<Value, error::Err> {
-		while true {
+		loop {
 			let frame = Arc::new(RwLock::new(StackFrame {
 				parent: Some(Arc::clone(&thunk.function.parent_frame)),
 				vt: thunk.vt.clone(),
@@ -1087,8 +1079,6 @@ impl Context {
 		clauses: Vec<parser::Node>,
 	) -> Result<Value, error::Err> {
 		let condition_val = self.node_eval(&**condition, Arc::clone(&frame), false)?;
-		// if let parser::Node::MatchExprNode{target} = clause {
-		// }
 		for clause in clauses {
 			if let parser::Node::MatchClauseNode { target, expression } = clause {
 				let target_val = self.node_eval(&*target, Arc::clone(&frame), false)?;
@@ -1189,8 +1179,7 @@ impl Context {
 		let nodes = parser::parse(tokens, true, true);
 
 		let sync_result = Ok(self.eval(nodes, dump));
-		let mut last_async_result: Result<Value, error::Err>;
-
+		let mut latest_async_result: Option<Result<Value, error::Err>> = None;
 		if self.engine.write().unwrap().listeners.load(SeqCst) == 0 {
 			return sync_result;
 		}
@@ -1200,12 +1189,16 @@ impl Context {
 
 			match message {
 				Message::InkFunctionCallback(ink_func) => {
-					last_async_result = self.eval_ink_function(ink_func.0, ink_func.1, ink_func.2)
+					latest_async_result =
+						Some(self.eval_ink_function(ink_func.0, ink_func.1, ink_func.2))
 				}
 				Message::Result(result) => {
 					if let Err(err) = result {
 						if let error::Err { reason, message } = err {
-							log::log_err_f(reason, &[message])
+							self.log_err(error::Err {
+								reason: reason,
+								message: message,
+							});
 						} else {
 							self.log_err(error::Err {
 								reason: error::ERR_ASSERT,
@@ -1214,18 +1207,25 @@ impl Context {
 							});
 						}
 					} else {
-						last_async_result = result;
+						latest_async_result = Some(result);
 					}
 				}
 			}
 
 			if eng.listeners.fetch_sub(1, SeqCst) == 1 {
-				return last_async_result;
+				if let Some(async_result) = latest_async_result {
+					return async_result;
+				} else {
+					return Err(error::Err {
+						reason: error::ERR_RUNTIME,
+						message: "Missing result in event loop!".to_string(),
+					});
+				}
 			}
 			drop(eval_lock);
 			drop(eng);
 		}
-		last_async_result
+		sync_result
 	}
 
 	// GoInk: exec_path is a convenience function to exec() a program file in a given Context.
