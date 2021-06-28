@@ -12,7 +12,7 @@ You many also be interested in [thesephist/schrift](https://github.com/thesephis
 
 <br>
 
-An example program that Quill can handle:
+An example Ink program that Quill can interpret:
 
 ```ink
 log := msg => out(string(msg) + char(10))
@@ -82,7 +82,7 @@ f
 
 ## Debug options
 
-Are currently forced on. So you'll get output like you were running Ink with `--verbose` and see debug information for the lexer, parser, and a frame dump.
+.. are currently forced on. So you'll get output like you were running Ink with `--verbose` and see debug information for the lexer, parser, and a frame dump.
 
 e.g.
 
