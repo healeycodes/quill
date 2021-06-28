@@ -19,7 +19,7 @@ w(0.45, 'f')
 ` this prints before the wait() calls `
 log(string(time()))
 
-` mutating maps test code `
+` a map `
 observation := {
     weather: 'Sunny',
     'observedAt': {

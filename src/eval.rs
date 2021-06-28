@@ -1191,6 +1191,9 @@ impl Context {
 		let sync_result = Ok(self.eval(nodes, dump));
 		let mut last_async_result: Result<Value, error::Err>;
 
+		if self.engine.write().unwrap().listeners.load(SeqCst) == 0 {
+			return sync_result;
+		}
 		while let Some(message) = self.event_channel.1.recv().await {
 			let eng = self.engine.write().unwrap();
 			let eval_lock = eng.eval_lock.lock().unwrap();
@@ -1210,7 +1213,6 @@ impl Context {
 									.to_string(),
 							});
 						}
-						unimplemented!()
 					} else {
 						last_async_result = result;
 					}
@@ -1223,8 +1225,7 @@ impl Context {
 			drop(eval_lock);
 			drop(eng);
 		}
-
-		sync_result
+		last_async_result
 	}
 
 	// GoInk: exec_path is a convenience function to exec() a program file in a given Context.

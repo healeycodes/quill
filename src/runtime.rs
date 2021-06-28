@@ -29,8 +29,9 @@ impl eval::Context {
         name: String,
         in_values: Vec<eval::Value>,
     ) -> Result<eval::Value, error::Err> {
+        // TODO: runtime funcs
         match name.as_str() {
-            // "load" => ink_load
+            // "load" => inkLoad
 
             // interfaces
             // "args" => inkArgs,
