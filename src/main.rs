@@ -7,7 +7,7 @@ mod runtime;
 use std::{
     collections::HashMap,
     env,
-    sync::{Arc, Barrier, Mutex, RwLock, atomic::AtomicI32},
+    sync::{atomic::AtomicI32, Arc, Barrier, Mutex, RwLock},
 };
 
 #[tokio::main]
