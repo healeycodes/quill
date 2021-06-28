@@ -1,10 +1,12 @@
 # ✒️ Quill
 
-Quill is an in-progress Rust port of [Ink](https://github.com/thesephist/ink) (a minimal programming language inspired by modern JavaScript and Go, with functional style). It uses Tokio async/await for an experimental event loop and passes callbacks via Tokio channels. The variable/function naming, as well as the code organization, tries to stick closely to the Go project. This way, patches that are added to Ink and be ported here. Many comments are lifted straight from the Go project (they start with `GoInk:`).
+_This project is paused for now as I've got everything out of it that I wanted to. However, pull-requests/fixes are welcome and I will thoughtfully engage with them._
 
 <br>
 
-_This project is paused for now as I've got everything out of it that I wanted to. However, pull-requests/fixes are welcome and I will thoughtfully engage with them._
+Quill is an in-progress Rust port of [thesephist/ink](https://github.com/thesephist/ink) (a minimal programming language inspired by modern JavaScript and Go, with functional style). It uses Tokio async/await for an experimental event loop and passes callbacks via Tokio channels. The variable/function naming, as well as the code organization, tries to stick closely to the Go project. This way, patches that are added to Ink and be ported here. Many comments are lifted straight from the Go project (they start with `GoInk:`).
+
+You many also be interested in [thesephist/schrift](https://github.com/thesephist/schrift) which is a more experimental runtime for Ink, focused on perf and instrumentation.
 
 <br>
 
